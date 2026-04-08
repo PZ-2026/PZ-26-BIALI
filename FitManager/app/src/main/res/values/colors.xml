@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="fitday_background">#F4F8F7</color> <color name="fitday_text_dark">#424242</color> <color name="fitday_text_light">#9E9E9E</color> <color name="fitday_primary">#7AFAC2</color> <color name="fitday_secondary">#E6FDF6</color> <color name="fitday_border">#E0E0E0</color> </resources>
