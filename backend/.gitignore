@@ -1,4 +1,27 @@
 HELP.md
+
+### OS / system files ###
+.DS_Store
+Thumbs.db
+
+### Logs / temp files ###
+*.log
+*.out
+*.err
+hs_err_pid*
+replay_pid*
+full-test.log
+output.log
+test_output.txt
+
+### Environment / local secrets ###
+.env
+.env.*
+!.env.example
+*.local
+src/main/resources/application-local.properties
+src/main/resources/application-secrets.properties
+
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

@@ -1,10 +1,13 @@
 package biali.fitmanager.backend.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import biali.fitmanager.backend.dto.AuthErrorResponse;
 import biali.fitmanager.backend.dto.LoginRequest;
 import biali.fitmanager.backend.dto.LoginResponse;
 import biali.fitmanager.backend.security.JwtService;
@@ -22,17 +25,20 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest loginRequest) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        loginRequest.getEmail(),
-                        loginRequest.getPassword()
-                )
-        );
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getEmail(),
+                            loginRequest.getPassword()
+                    )
+            );
 
-        // Generowanie tokenu JWT
-        String token = jwtService.generateToken(authentication);
-        
-        return ResponseEntity.ok(new LoginResponse(token));
+            String token = jwtService.generateToken(authentication);
+            return ResponseEntity.ok(new LoginResponse(token));
+        } catch (AuthenticationException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthErrorResponse("Invalid email or password"));
+        }
     }
 }

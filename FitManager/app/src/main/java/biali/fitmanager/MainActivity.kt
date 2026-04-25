@@ -1,10 +1,10 @@
 package biali.fitmanager
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
-import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -12,14 +12,20 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import biali.fitmanager.network.LoginRequest
-import biali.fitmanager.network.RetrofitClient
+import biali.fitmanager.network.FitManagerRepository
+import biali.fitmanager.network.SessionManager
 import kotlinx.coroutines.launch
 
 
 class MainActivity : AppCompatActivity() {
 
+    private val repository = FitManagerRepository()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SessionManager.initialize(applicationContext)
+
+        if (routeToPanelIfSessionExists()) return
         setContentView(R.layout.activity_main)
 
         // Inicjalizacja widoków
@@ -66,36 +72,81 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val request = LoginRequest(email, password)
-                val response = RetrofitClient.api.login(request)
+                when (val result = repository.login(request)) {
+                    is biali.fitmanager.network.ApiResult.Success -> {
+                        val token = result.data.token
+                        val role = SessionManager.resolveRoleFromToken(token)
+                        if (role == null) {
+                            Toast.makeText(this@MainActivity, "Nie udało się ustalić roli użytkownika.", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
 
-                if (response.isSuccessful && response.body() != null) {
-                    val token = response.body()!!.token
-                    Log.d("FITMANAGER_TEST", "SUKCES! Pobrany token: $token")
+                        SessionManager.saveSession(token, role)
+                        Toast.makeText(this@MainActivity, "Zalogowano!", Toast.LENGTH_SHORT).show()
+                        routeToPanel(role, email)
+                    }
 
-                    // Zapisujemy token (SharedPreferences)
-                    saveToken(token)
+                    is biali.fitmanager.network.ApiResult.Unauthorized -> {
+                        Toast.makeText(this@MainActivity, "Błędne dane!", Toast.LENGTH_SHORT).show()
+                    }
 
-                    Toast.makeText(this@MainActivity, "Zalogowano!", Toast.LENGTH_SHORT).show()
-                    val intent = Intent(this@MainActivity, HomeActivity::class.java)
-                    startActivity(intent)
-                    finish()
-
-                } else {
-                    Log.e("FITMANAGER_TEST", "Błąd logowania, kod: ${response.code()}")
-                    Toast.makeText(this@MainActivity, "Błędne dane!", Toast.LENGTH_SHORT).show()
+                    is biali.fitmanager.network.ApiResult.Error -> {
+                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                    }
                 }
-            } catch (e: Exception) {
-                Log.e("FITMANAGER_TEST", "Błąd połączenia: ${e.message}")
+            } catch (_: Exception) {
                 Toast.makeText(this@MainActivity, "Błąd połączenia z serwerem!", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun saveToken(token: String) {
-        val sharedPref = getSharedPreferences("FitManagerPrefs", MODE_PRIVATE)
-        with(sharedPref.edit()) {
-            putString("JWT_TOKEN", token)
-            apply()
+    private fun routeToPanelIfSessionExists(): Boolean {
+        val token = SessionManager.getToken()
+        val role = SessionManager.getRole() ?: token?.let(SessionManager::resolveRoleFromToken)
+        val email = token?.let(SessionManager::resolveEmailFromToken)
+
+        if (!token.isNullOrBlank() && !role.isNullOrBlank()) {
+            routeToPanel(role, email)
+            return true
         }
+
+        return false
+    }
+
+    private fun routeToPanel(role: String, email: String? = null) {
+        val className: String? = if (role.equals("ADMIN", ignoreCase = true)) {
+            "biali.fitmanager.AdminHomeActivity"
+        } else if (role.equals("TRAINER", ignoreCase = true)) {
+            "biali.fitmanager.TrainerUsersActivity"
+        } else if (role.equals("CLIENT", ignoreCase = true)) {
+            "biali.fitmanager.HomeActivity"
+        } else {
+            null
+        }
+
+        if (className == null) {
+            Toast.makeText(this, "Nieobsługiwana rola: $role", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val targetActivity = resolveActivityClass(className)
+        if (targetActivity == null) {
+            Toast.makeText(this, "Nie udało się uruchomić panelu: $role", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = Intent(this, targetActivity)
+
+        email?.let { intent.putExtra("USER_EMAIL", it) }
+        intent.putExtra("USER_ROLE", role)
+        startActivity(intent)
+        finish()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun resolveActivityClass(className: String): Class<out Activity>? {
+        return runCatching {
+            Class.forName(className) as Class<out Activity>
+        }.getOrNull()
     }
 }

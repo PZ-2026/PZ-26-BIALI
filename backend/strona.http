@@ -1,7 +1,106 @@
-POST http://localhost:8080/api/auth/login
+@baseUrl = http://localhost:8080
+@adminToken = PASTE_ADMIN_JWT_HERE
+@trainerToken = PASTE_TRAINER_JWT_HERE
+
+### 1) Login admin (skopiuj token do @adminToken)
+POST {{baseUrl}}/api/auth/login
 Content-Type: application/json
 
 {
-    "email": "jannowak@gmail.com",
-    "password": "Haslo123"
+    "email": "admin@fitmanager.pl",
+    "password": "Admin123"
 }
+
+### 2) Lista wszystkich userow
+GET {{baseUrl}}/api/admin/users
+Authorization: Bearer {{adminToken}}
+
+### 3) Lista tylko trenerow
+GET {{baseUrl}}/api/admin/trainers
+Authorization: Bearer {{adminToken}}
+
+### 4) Dodaj klienta
+POST {{baseUrl}}/api/admin/users
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+    "email": "nowyklient@fitmanager.pl",
+    "password": "Haslo123",
+    "role": "CLIENT",
+    "firstName": "Nowy",
+    "lastName": "Klient",
+    "phoneNumber": "600700800"
+}
+
+### 5) Dodaj trenera
+POST {{baseUrl}}/api/admin/trainers
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+    "email": "nowytrener@fitmanager.pl",
+    "password": "Trener123",
+    "firstName": "Nowy",
+    "lastName": "Trener",
+    "phoneNumber": "700800900"
+}
+
+### 6) Edytuj usera (podmien ID)
+PUT {{baseUrl}}/api/admin/users/3
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+    "firstName": "Anna",
+    "lastName": "Nowak-Zmieniona",
+    "phoneNumber": "555000111"
+}
+
+### 7) Edytuj trenera (podmien ID)
+PUT {{baseUrl}}/api/admin/trainers/2
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+    "firstName": "Jan",
+    "lastName": "Kowalski-Updated",
+    "phoneNumber": "987000111"
+}
+
+### 8) Przypisz klienta do trenera (trainerId/clientId podmien)
+POST {{baseUrl}}/api/admin/trainers/2/clients/3
+Authorization: Bearer {{adminToken}}
+
+### 9) Lista podopiecznych trenera
+GET {{baseUrl}}/api/admin/trainers/2/clients
+Authorization: Bearer {{adminToken}}
+
+### 10) Odpisz klienta od trenera
+DELETE {{baseUrl}}/api/admin/trainers/2/clients/3
+Authorization: Bearer {{adminToken}}
+
+### 11) Usun usera (podmien ID)
+DELETE {{baseUrl}}/api/admin/users/3
+Authorization: Bearer {{adminToken}}
+
+### 12) Usun trenera (podmien ID)
+DELETE {{baseUrl}}/api/admin/trainers/2
+Authorization: Bearer {{adminToken}}
+
+### 13) Login trener (skopiuj token do @trainerToken)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+    "email": "trener@fitmanager.pl",
+    "password": "Trener123"
+}
+
+### 14) Profil aktualnie zalogowanego usera (/api/me)
+GET {{baseUrl}}/api/me
+Authorization: Bearer {{trainerToken}}
+
+### 15) Podopieczni zalogowanego trenera
+GET {{baseUrl}}/api/trainer/me/clients
+Authorization: Bearer {{trainerToken}}
