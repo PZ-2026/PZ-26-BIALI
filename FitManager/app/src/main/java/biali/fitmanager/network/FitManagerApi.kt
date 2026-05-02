@@ -57,4 +57,13 @@ interface FitManagerApi {
         @Path("trainerId") trainerId: Int,
         @Path("clientId") clientId: Int
     ): Response<Void>
+
+    @GET("api/memberships/me")
+    suspend fun getMyMembership(): Response<MembershipResponse>
+
+    @GET("api/membership-types")
+    suspend fun getMembershipTypes(): Response<List<MembershipTypeResponse>>
+
+    @POST("api/memberships")
+    suspend fun purchaseMembership(@Body request: PurchaseMembershipRequest): Response<MembershipResponse>
 }

@@ -1,10 +1,11 @@
 package biali.fitmanager.backend.dto;
+import biali.fitmanager.backend.model.MembershipType;
 
 import java.time.LocalDate;
 
 public class MembershipUpsertRequest {
     private Integer userId;
-    private String membershipType;
+    private MembershipType membershipType;
     private LocalDate startDate;
     private LocalDate endDate;
     private String status;
@@ -17,11 +18,11 @@ public class MembershipUpsertRequest {
         this.userId = userId;
     }
 
-    public String getMembershipType() {
+    public MembershipType getMembershipType() {
         return membershipType;
     }
 
-    public void setMembershipType(String membershipType) {
+    public void setMembershipType(MembershipType membershipType) {
         this.membershipType = membershipType;
     }
 

@@ -53,6 +53,15 @@ class FitManagerRepository(
     suspend fun unassignClientFromTrainer(trainerId: Int, clientId: Int): ApiResult<Unit> =
         executeVoidCall { api.unassignClientFromTrainer(trainerId, clientId) }
 
+    suspend fun getMyMembership(): ApiResult<MembershipResponse> =
+        executeBodyCall { api.getMyMembership() }
+
+    suspend fun getMembershipTypes(): ApiResult<List<MembershipTypeResponse>> =
+        executeBodyCall { api.getMembershipTypes() }
+
+    suspend fun purchaseMembership(request: PurchaseMembershipRequest): ApiResult<MembershipResponse> =
+        executeBodyCall { api.purchaseMembership(request) }
+
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {
             val response = call()
@@ -117,4 +126,3 @@ class FitManagerRepository(
         else -> "Wystąpił błąd serwera ($code)."
     }
 }
-

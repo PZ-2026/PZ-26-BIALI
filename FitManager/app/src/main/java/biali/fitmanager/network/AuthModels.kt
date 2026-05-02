@@ -41,3 +41,24 @@ data class UserUpsertRequest(
     val lastName: String,
     val phoneNumber: String? = null
 )
+
+data class MembershipResponse(
+    val id: Int,
+    val userId: Int,
+    val membershipTypeId: Int,
+    val startDate: String,
+    val endDate: String,
+    val membershipType: MembershipTypeResponse
+)
+
+data class MembershipTypeResponse(
+    val id: Int,
+    val name: String,
+    val price: Double,
+    val durationDays: Int,
+    val description: String? = null
+)
+
+data class PurchaseMembershipRequest(
+    val membershipTypeId: Int
+)

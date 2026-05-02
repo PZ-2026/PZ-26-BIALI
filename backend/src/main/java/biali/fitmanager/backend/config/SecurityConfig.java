@@ -52,7 +52,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedEntryPoint()))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/login", "/error").permitAll()
+                .requestMatchers("/api/auth/login", "/error", "/api/membership-types").permitAll()
                 .requestMatchers("/api/admin/**", "/api/users/**").hasRole("ADMIN")
                 .requestMatchers("/api/trainer/**").hasRole("TRAINER")
                 .requestMatchers("/api/me").authenticated()

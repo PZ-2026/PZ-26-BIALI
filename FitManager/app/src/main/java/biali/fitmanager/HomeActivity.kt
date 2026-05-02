@@ -5,15 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,6 +20,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
+import biali.fitmanager.network.MembershipResponse
+import biali.fitmanager.network.MembershipTypeResponse
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.LightGreen80
@@ -37,6 +35,8 @@ import kotlinx.coroutines.launch
 class HomeActivity : ComponentActivity() {
     private val repository = FitManagerRepository()
     private var displayName by mutableStateOf("Użytkowniku")
+    private var membership by mutableStateOf<MembershipResponse?>(null)
+    private var membershipTypes by mutableStateOf<List<MembershipTypeResponse>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,17 +50,22 @@ class HomeActivity : ComponentActivity() {
 
         displayName = loggedDisplayName ?: displayNameFromEmail(loggedEmail)
         fetchProfileDisplayNameIfNeeded()
+        fetchMembership()
+        fetchMembershipTypes()
 
         setContent {
             GymManagerTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = { Navbar(onLogout = ::logout) },
-                    bottomBar = { BottomNav() }
+                    topBar = { Navbar(onLogout = ::logout, activeMembership = membership) },
+                    bottomBar = { BottomNav(onNavigateToMemberships = ::navigateToMemberships) }
                 ) { innerPadding ->
                     MainContent(
                         modifier = Modifier.padding(innerPadding),
-                        displayName = displayName
+                        displayName = displayName,
+                        membership = membership,
+                        membershipTypes = membershipTypes,
+                        onBuyMembership = ::navigateToMemberships
                     )
                 }
             }
@@ -89,6 +94,33 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    private fun fetchMembership() {
+        lifecycleScope.launch {
+            when (val result = repository.getMyMembership()) {
+                is ApiResult.Success -> {
+                    membership = result.data
+                }
+                is ApiResult.Unauthorized -> logout()
+                is ApiResult.Error -> {
+                    if (result.code == 404) {
+                        membership = null
+                    }
+                }
+            }
+        }
+    }
+
+    private fun fetchMembershipTypes() {
+        lifecycleScope.launch {
+            when (val result = repository.getMembershipTypes()) {
+                is ApiResult.Success -> {
+                    membershipTypes = result.data
+                }
+                else -> Unit
+            }
+        }
+    }
+
     private fun logout() {
         SessionManager.clearSession()
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -96,6 +128,11 @@ class HomeActivity : ComponentActivity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun navigateToMemberships() {
+        val intent = Intent(this, MembershipsActivity::class.java)
+        startActivity(intent)
     }
 }
 
@@ -120,7 +157,7 @@ private fun displayNameFromEmail(email: String?): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Navbar(onLogout: () -> Unit) {
+fun Navbar(onLogout: () -> Unit, activeMembership: MembershipResponse? = null) {
     TopAppBar(
         title = {
             Row(
@@ -129,7 +166,11 @@ fun Navbar(onLogout: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("230.00zł", fontSize = 16.sp)
+                activeMembership?.let {
+                    Text("${it.membershipType.price} zł", fontSize = 16.sp)
+                } ?: run {
+                    Text("0.00 zł", fontSize = 16.sp)
+                }
             }
         },
         actions = {
@@ -141,7 +182,13 @@ fun Navbar(onLogout: () -> Unit) {
 }
 
 @Composable
-fun MainContent(modifier: Modifier = Modifier, displayName: String) {
+fun MainContent(
+    modifier: Modifier = Modifier, 
+    displayName: String, 
+    membership: MembershipResponse?, 
+    membershipTypes: List<MembershipTypeResponse>,
+    onBuyMembership: () -> Unit
+) {
     val scrollState = rememberScrollState()
 
     Column(
@@ -154,15 +201,11 @@ fun MainContent(modifier: Modifier = Modifier, displayName: String) {
         Text(text = "Mój panel", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(text = "Witaj $displayName!", fontSize = 16.sp)
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .background(color = Color.LightGray)
-                .padding(16.dp)
-        ) {
-            Text(text = "Aktywny karnet", modifier = Modifier.align(Alignment.Center))
-        }
+        MembershipSection(
+            membership = membership, 
+            membershipTypes = membershipTypes,
+            onBuyMembership = onBuyMembership
+        )
 
         Text(text = "Twoje ostatnie treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
 
@@ -183,6 +226,57 @@ fun MainContent(modifier: Modifier = Modifier, displayName: String) {
 
         // Mały odstęp na samym dole, żeby przycisk nie dotykał krawędzi ekranu
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun MembershipSection(
+    membership: MembershipResponse?, 
+    membershipTypes: List<MembershipTypeResponse>,
+    onBuyMembership: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.LightGray.copy(alpha = 0.4f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (membership != null) {
+                Text(
+                    text = "Twój aktywny karnet",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Green80,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text("Typ: ${membership.membershipType.name}", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text("Cena: ${membership.membershipType.price} zł", fontSize = 16.sp)
+                Text("Wygasa: ${membership.endDate}", fontSize = 16.sp)
+            } else {
+                Text(
+                    text = "Brak aktywnego karnetu",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                if (membershipTypes.isNotEmpty()) {
+                    Text("Dostępne opcje:", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    membershipTypes.forEach { type ->
+                        Text("• ${type.name} - ${type.price} zł", fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Button(
+                    onClick = onBuyMembership,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
+                ) {
+                    Text("Kup karnet")
+                }
+            }
+        }
     }
 }
 
@@ -235,7 +329,7 @@ fun RowScope.TableCell(text: String, weight: Float, isHeader: Boolean = false) {
 }
 
 @Composable
-fun BottomNav() {
+fun BottomNav(onNavigateToMemberships: () -> Unit) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -265,6 +359,12 @@ fun BottomNav() {
         )
         NavigationBarItem(
             selected = false,
+            onClick = onNavigateToMemberships,
+            label = { Text("Karnety") },
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Karnety") }
+        )
+        NavigationBarItem(
+            selected = false,
             onClick = { },
             label = { Text("Konto") },
             icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
@@ -276,6 +376,11 @@ fun BottomNav() {
 @Composable
 fun MainContentPreview() {
     GymManagerTheme {
-        MainContent(displayName = "Jan Nowak")
+        MainContent(
+            displayName = "Jan Nowak", 
+            membership = null, 
+            membershipTypes = emptyList(),
+            onBuyMembership = {}
+        )
     }
 }

@@ -1,4 +1,10 @@
--- 1. Tabela Użytkowników (wspólna dla ról: ADMIN, TRAINER, CLIENT)
+-- opcjonalnie czyszczenie
+DROP TABLE IF EXISTS training_plans, progress_logs, reservations, training_sessions,
+payments, memberships, membership_types, trainer_clients, users CASCADE;
+
+-----------------------------------------------------------
+-- 1. USERS
+-----------------------------------------------------------
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -10,7 +16,9 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Tabela relacji: Trener - Podopieczny (Klient)
+-----------------------------------------------------------
+-- 2. TRAINER - CLIENT RELATION
+-----------------------------------------------------------
 CREATE TABLE trainer_clients (
     id SERIAL PRIMARY KEY,
     trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -18,28 +26,51 @@ CREATE TABLE trainer_clients (
     UNIQUE (trainer_id, client_id)
 );
 
--- 3. Tabela Karnetów
+-----------------------------------------------------------
+-- 3. MEMBERSHIP TYPES (NOWA TABELA)
+-----------------------------------------------------------
+CREATE TABLE membership_types (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    duration_days INT NOT NULL,
+    description TEXT
+);
+
+-----------------------------------------------------------
+-- 4. MEMBERSHIPS
+-----------------------------------------------------------
 CREATE TABLE memberships (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    membership_type VARCHAR(100) NOT NULL,
+    membership_type_id INT NOT NULL REFERENCES membership_types(id),
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     status VARCHAR(50) NOT NULL CHECK (status IN ('ACTIVE', 'EXPIRED', 'CANCELLED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Tabela Płatności
+-- 🔥 tylko 1 aktywny karnet na usera
+CREATE UNIQUE INDEX unique_active_membership_per_user
+ON memberships(user_id)
+WHERE status = 'ACTIVE';
+
+-----------------------------------------------------------
+-- 5. PAYMENTS
+-----------------------------------------------------------
 CREATE TABLE payments (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     membership_id INT REFERENCES memberships(id) ON DELETE SET NULL,
-    amount DECIMAL(10, 2) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
     payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(50) NOT NULL CHECK (status IN ('SUCCESS', 'FAILED', 'PENDING'))
 );
 
--- 5. Tabela Harmonogramu / Zajęć Treningowych
+-----------------------------------------------------------
+-- 6. TRAINING SESSIONS
+-----------------------------------------------------------
 CREATE TABLE training_sessions (
     id SERIAL PRIMARY KEY,
     trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -50,7 +81,9 @@ CREATE TABLE training_sessions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Tabela Rezerwacji Klientów na zajęcia
+-----------------------------------------------------------
+-- 7. RESERVATIONS
+-----------------------------------------------------------
 CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -60,18 +93,22 @@ CREATE TABLE reservations (
     UNIQUE (user_id, session_id)
 );
 
--- 7. Tabela Postępów Klienta 
+-----------------------------------------------------------
+-- 8. PROGRESS LOGS
+-----------------------------------------------------------
 CREATE TABLE progress_logs (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     log_date DATE NOT NULL,
-    weight DECIMAL(5, 2),
+    weight DECIMAL(5,2),
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8. Tabela Planów Treningowych 
+-----------------------------------------------------------
+-- 9. TRAINING PLANS
+-----------------------------------------------------------
 CREATE TABLE training_plans (
     id SERIAL PRIMARY KEY,
     trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -80,39 +117,3 @@ CREATE TABLE training_plans (
     description TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-
-
--- Dodawanie przykładowych użytkowników 
-INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number) VALUES
-('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Slowik', '123456789'),
-('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321'),
-('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333');
-
--- Przypisanie klienta (ID 3) do trenera (ID 2)
-INSERT INTO trainer_clients (trainer_id, client_id) VALUES
-(2, 3);
-
--- Dodanie aktywnego karnetu dla klienta
-INSERT INTO memberships (user_id, membership_type, start_date, end_date, status) VALUES
-(3, 'Karnet OPEN 30 Dni', CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE');
-
--- Dodanie historii płatności za karnet
-INSERT INTO payments (user_id, membership_id, amount, status) VALUES
-(3, 1, 149.99, 'SUCCESS');
-
--- Stworzenie przykładowych zajęć w harmonogramie trenera
-INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_participants) VALUES
-(2, 'Trening Siłowy - Nogi', CURRENT_TIMESTAMP + INTERVAL '1 day', CURRENT_TIMESTAMP + INTERVAL '1 day 1 hour', 1);
-
--- Rezerwacja klienta na powyższe zajęcia
-INSERT INTO reservations (user_id, session_id, status) VALUES
-(3, 1, 'CONFIRMED');
-
--- Wpis postępów treningowych przez trenera 
-INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes) VALUES
-(3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych, technika przysiadu znacznie lepsza.');
-
--- Stworzenie planu treningowego dla klienta
-INSERT INTO training_plans (trainer_id, client_id, title, description) VALUES
-(2, 3, 'Plan FBW dla początkujących', '1. Przysiady 3x10\n2. Martwy ciąg 3x8\n3. Wyciskanie na ławce płaskiej 3x10');

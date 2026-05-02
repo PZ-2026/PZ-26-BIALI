@@ -23,6 +23,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".HomeActivity" />
+        <activity android:name=".MembershipsActivity" />
         <activity android:name=".TrainerUsersActivity" />
         <activity android:name=".AdminHomeActivity" />
     </application>

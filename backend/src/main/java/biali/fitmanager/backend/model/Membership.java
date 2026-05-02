@@ -2,13 +2,7 @@ package biali.fitmanager.backend.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "memberships")
@@ -21,8 +15,10 @@ public class Membership {
     @Column(name = "user_id", nullable = false)
     private Integer userId;
 
-    @Column(name = "membership_type", nullable = false)
-    private String membershipType;
+    // 🔥 ZAMIANA ENUM -> RELACJA DO TABELI
+    @ManyToOne
+    @JoinColumn(name = "membership_type_id", nullable = false)
+    private MembershipType membershipType;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
@@ -31,56 +27,29 @@ public class Membership {
     private LocalDate endDate;
 
     @Column(nullable = false)
-    private String status;
+    private String status = "ACTIVE";
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    public Integer getId() {
-        return id;
-    }
+    // GETTERY / SETTERY
 
-    public Integer getUserId() {
-        return userId;
-    }
+    public Integer getId() { return id; }
 
-    public String getMembershipType() {
-        return membershipType;
-    }
+    public Integer getUserId() { return userId; }
+    public void setUserId(Integer userId) { this.userId = userId; }
 
-    public LocalDate getStartDate() {
-        return startDate;
-    }
+    public MembershipType getMembershipType() { return membershipType; }
+    public void setMembershipType(MembershipType membershipType) { this.membershipType = membershipType; }
 
-    public LocalDate getEndDate() {
-        return endDate;
-    }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
 
-    public String getStatus() {
-        return status;
-    }
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
-    public void setUserId(Integer userId) {
-        this.userId = userId;
-    }
-
-    public void setMembershipType(String membershipType) {
-        this.membershipType = membershipType;
-    }
-
-    public void setStartDate(LocalDate startDate) {
-        this.startDate = startDate;
-    }
-
-    public void setEndDate(LocalDate endDate) {
-        this.endDate = endDate;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
+    public LocalDateTime getCreatedAt() { return createdAt; }
 }
