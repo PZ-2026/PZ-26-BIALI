@@ -36,6 +36,7 @@ class HomeActivity : ComponentActivity() {
     private val repository = FitManagerRepository()
     private var displayName by mutableStateOf("Użytkowniku")
     private var membership by mutableStateOf<MembershipResponse?>(null)
+    private var balance by mutableStateOf<Double?>(null)
     private var membershipTypes by mutableStateOf<List<MembershipTypeResponse>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,13 +52,14 @@ class HomeActivity : ComponentActivity() {
         displayName = loggedDisplayName ?: displayNameFromEmail(loggedEmail)
         fetchProfileDisplayNameIfNeeded()
         fetchMembership()
+        fetchBalance()
         fetchMembershipTypes()
 
         setContent {
             GymManagerTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = { Navbar(onLogout = ::logout, activeMembership = membership) },
+                    topBar = { Navbar(onLogout = ::logout, balance = balance, onBalanceClick = ::navigateToWallet) },
                     bottomBar = { BottomNav(onNavigateToMemberships = ::navigateToMemberships) }
                 ) { innerPadding ->
                     MainContent(
@@ -70,6 +72,32 @@ class HomeActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // refresh balance when returning to Home
+        fetchBalance()
+    }
+
+    private fun fetchBalance() {
+        lifecycleScope.launch {
+            when (val result = repository.getMe()) {
+                is ApiResult.Success -> {
+                    balance = result.data.balance ?: SessionManager.getBalance()
+                }
+                is ApiResult.Unauthorized -> logout()
+                is ApiResult.Error -> {
+                    // keep local stored balance if available
+                    balance = SessionManager.getBalance()
+                }
+            }
+        }
+    }
+
+    private fun navigateToWallet() {
+        val intent = Intent(this, WalletActivity::class.java)
+        startActivity(intent)
     }
 
     private fun fetchProfileDisplayNameIfNeeded() {
@@ -157,7 +185,7 @@ private fun displayNameFromEmail(email: String?): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Navbar(onLogout: () -> Unit, activeMembership: MembershipResponse? = null) {
+fun Navbar(onLogout: () -> Unit, balance: Double? = null, onBalanceClick: () -> Unit = {}) {
     TopAppBar(
         title = {
             Row(
@@ -166,10 +194,10 @@ fun Navbar(onLogout: () -> Unit, activeMembership: MembershipResponse? = null) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                activeMembership?.let {
-                    Text("${it.membershipType.price} zł", fontSize = 16.sp)
-                } ?: run {
-                    Text("0.00 zł", fontSize = 16.sp)
+                // balance clickable
+                TextButton(onClick = onBalanceClick) {
+                    val display = balance ?: SessionManager.getBalance()
+                    Text("${String.format(java.util.Locale.getDefault(), "%.2f", display)} zł", fontSize = 16.sp)
                 }
             }
         },

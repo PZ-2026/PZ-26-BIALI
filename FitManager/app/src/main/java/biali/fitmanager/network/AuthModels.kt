@@ -30,7 +30,8 @@ data class MeResponse(
     val firstName: String,
     val lastName: String,
     val phoneNumber: String? = null,
-    val name: String? = null
+    val name: String? = null,
+    val balance: Double? = null
 )
 
 data class UserUpsertRequest(
@@ -62,3 +63,8 @@ data class MembershipTypeResponse(
 data class PurchaseMembershipRequest(
     val membershipTypeId: Int
 )
+
+data class TopUpRequest(
+    val amount: Double
+)
+

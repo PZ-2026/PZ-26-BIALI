@@ -62,6 +62,9 @@ class FitManagerRepository(
     suspend fun purchaseMembership(request: PurchaseMembershipRequest): ApiResult<MembershipResponse> =
         executeBodyCall { api.purchaseMembership(request) }
 
+    suspend fun topUpUser(userId: Int, request: TopUpRequest): ApiResult<Unit> =
+        executeVoidCall { api.topUpUser(userId, request) }
+
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {
             val response = call()

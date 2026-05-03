@@ -63,7 +63,8 @@ public class TrainerController {
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhoneNumber(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getAccountBalance()
         );
     }
 }

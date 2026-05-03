@@ -7,6 +7,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -52,8 +53,10 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedEntryPoint()))
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.POST, "/api/users/*/topup", "/api/users/*/purchase-membership/*").authenticated()
                 .requestMatchers("/api/auth/login", "/error", "/api/membership-types").permitAll()
-                .requestMatchers("/api/admin/**", "/api/users/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**").hasRole("ADMIN")
                 .requestMatchers("/api/trainer/**").hasRole("TRAINER")
                 .requestMatchers("/api/me").authenticated()
                 .requestMatchers("/api/memberships/**", "/api/sessions/**", "/api/reservations/**").authenticated()

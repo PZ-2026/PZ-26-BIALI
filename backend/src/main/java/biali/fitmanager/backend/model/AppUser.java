@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "users")
@@ -34,6 +35,9 @@ public class AppUser {
 
     @Column(name = "phone_number")
     private String phoneNumber;
+
+    @Column(name = "account_balance", nullable = false)
+    private BigDecimal accountBalance = BigDecimal.ZERO;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -66,6 +70,10 @@ public class AppUser {
         return phoneNumber;
     }
 
+    public BigDecimal getAccountBalance() {
+        return accountBalance;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -92,5 +100,9 @@ public class AppUser {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
+    }
+
+    public void setAccountBalance(BigDecimal accountBalance) {
+        this.accountBalance = accountBalance;
     }
 }

@@ -1,6 +1,7 @@
 package biali.fitmanager.backend.dto;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 public record UserResponse(
         Integer id,
@@ -9,6 +10,7 @@ public record UserResponse(
         String firstName,
         String lastName,
         String phoneNumber,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        BigDecimal accountBalance
 ) {
 }

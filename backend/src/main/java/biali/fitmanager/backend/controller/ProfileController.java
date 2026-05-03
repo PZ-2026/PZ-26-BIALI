@@ -37,6 +37,7 @@ public class ProfileController {
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhoneNumber(),
+                user.getAccountBalance(),
                 name
         ));
     }

@@ -10,6 +10,7 @@ object SessionManager {
     private const val PREFS_NAME = "FitManagerPrefs"
     private const val KEY_TOKEN = "JWT_TOKEN"
     private const val KEY_ROLE = "USER_ROLE"
+    private const val KEY_BALANCE = "USER_BALANCE"
 
     @Volatile
     private var appContext: Context? = null
@@ -36,6 +37,22 @@ object SessionManager {
 
     fun clearSession() {
         prefs()?.edit { clear() }
+    }
+
+    fun saveBalance(amount: Double) {
+        prefs()?.edit {
+            putString(KEY_BALANCE, amount.toString())
+        }
+    }
+
+    fun getBalance(): Double {
+        val raw = prefs()?.getString(KEY_BALANCE, null)
+        return raw?.toDoubleOrNull() ?: 0.0
+    }
+
+    fun changeBalanceBy(delta: Double) {
+        val new = getBalance() + delta
+        saveBalance(new)
     }
 
     fun isLoggedIn(): Boolean = !getToken().isNullOrBlank()
@@ -74,6 +91,20 @@ object SessionManager {
         } catch (_: Exception) {
             null
         }
+    }
+
+    fun resolveUserIdFromToken(token: String): Int? {
+        return runCatching {
+            val json = decodePayload(token)
+            // try common claims names
+            val idAny = when {
+                json.has("id") -> json.opt("id")
+                json.has("userId") -> json.opt("userId")
+                json.has("sub") -> json.opt("sub")
+                else -> null
+            }
+            idAny?.toString()?.toIntOrNull()
+        }.getOrNull()
     }
 
     private fun decodePayload(token: String): JSONObject {

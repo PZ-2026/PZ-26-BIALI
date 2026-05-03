@@ -1,4 +1,5 @@
 package biali.fitmanager.backend.dto;
+import java.math.BigDecimal;
 
 public record MeResponse(
         Integer id,
@@ -7,6 +8,7 @@ public record MeResponse(
         String firstName,
         String lastName,
         String phoneNumber,
+        BigDecimal accountBalance,
         String name
 ) {
 }

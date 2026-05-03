@@ -11,6 +11,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,6 +62,11 @@ class MembershipsActivity : ComponentActivity() {
         var loading by remember { mutableStateOf(true) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
 
+        // state to show selected type in dialog
+        var selectedType by remember { mutableStateOf<MembershipTypeResponse?>(null) }
+        val snackbarHostState = remember { SnackbarHostState() }
+        val coroutineScope = rememberCoroutineScope()
+
         LaunchedEffect(Unit) {
             loading = true
             when (val result = repository.getMembershipTypes()) {
@@ -83,6 +97,9 @@ class MembershipsActivity : ComponentActivity() {
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
+            // snackbar host
+            SnackbarHost(hostState = snackbarHostState)
+
             if (loading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     CircularProgressIndicator()
@@ -92,11 +109,59 @@ class MembershipsActivity : ComponentActivity() {
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(membershipTypes) { type ->
-                        MembershipCard(type) { selectedType ->
-                            purchaseMembership(selectedType)
+                        MembershipCard(type) { selected ->
+                            // instead of immediate purchase, show confirmation dialog
+                            selectedType = selected
                         }
                     }
                 }
+            }
+
+            // pokaz dialog z podsumowaniem zakupu
+            selectedType?.let { type ->
+                PurchaseConfirmationDialog(
+                    type = type,
+                    onDismiss = { selectedType = null },
+                    onConfirm = {
+                        val balance = SessionManager.getBalance()
+                        if (balance < type.price) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Za mało środków")
+                            }
+                        } else {
+                            // wykonaj zakup i po sukcesie zmniejsz saldo
+                            lifecycleScope.launch {
+                                val request = PurchaseMembershipRequest(membershipTypeId = type.id)
+                                when (val result = repository.purchaseMembership(request)) {
+                                    is ApiResult.Success -> {
+                                        // pomniejsz saldo lokalnie
+                                        SessionManager.changeBalanceBy(-type.price)
+                                        // Po zakupie wróć do HomeActivity
+                                        val intent = Intent(this@MembershipsActivity, HomeActivity::class.java).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        }
+                                        startActivity(intent)
+                                        finish()
+                                    }
+                                    is ApiResult.Unauthorized -> {
+                                        SessionManager.clearSession()
+                                        val intent = Intent(this@MembershipsActivity, MainActivity::class.java).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        }
+                                        startActivity(intent)
+                                        finish()
+                                    }
+                                    is ApiResult.Error -> {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(result.message ?: "Błąd podczas zakupu")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        selectedType = null
+                    }
+                )
             }
         }
     }
@@ -168,3 +233,46 @@ fun MembershipCard(type: MembershipTypeResponse, onPurchase: (MembershipTypeResp
         }
     }
 }
+
+@Composable
+fun PurchaseConfirmationDialog(
+    type: MembershipTypeResponse,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    // compute dates
+    val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    val calendar = Calendar.getInstance()
+    val startDate = calendar.time
+    calendar.add(Calendar.DAY_OF_YEAR, type.durationDays)
+    val endDate = calendar.time
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Podsumowanie zakupu", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(text = "Typ: ${type.name}")
+                Text(text = "Ważny od: ${sdf.format(startDate)} do: ${sdf.format(endDate)}")
+                Text(text = "Cena: ${String.format(Locale.getDefault(), "%.2f", type.price)} zł")
+
+                val balance = SessionManager.getBalance()
+                val remaining = balance - type.price
+                Text(text = "Saldo po zakupie: ${String.format(Locale.getDefault(), "%.2f", remaining)} zł")
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Anuluj")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = Green80)) {
+                        Text("Kup", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -66,4 +66,7 @@ interface FitManagerApi {
 
     @POST("api/memberships")
     suspend fun purchaseMembership(@Body request: PurchaseMembershipRequest): Response<MembershipResponse>
+
+    @POST("api/users/{id}/topup")
+    suspend fun topUpUser(@Path("id") id: Int, @Body request: TopUpRequest): Response<Void>
 }
