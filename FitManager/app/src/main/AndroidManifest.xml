@@ -26,6 +26,7 @@
         <activity android:name=".MembershipsActivity" />
         <activity android:name=".WalletActivity" />
         <activity android:name=".TrainerUsersActivity" />
+        <activity android:name=".TrainersActivity" />
         <activity android:name=".AdminHomeActivity" />
     </application>
 </manifest>

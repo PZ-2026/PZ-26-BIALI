@@ -63,7 +63,14 @@ class HomeActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { Navbar(onLogout = ::logout, balance = balance, onBalanceClick = ::navigateToWallet, userRole = userRole) },
-                    bottomBar = { BottomNav(onNavigateToMemberships = ::navigateToMemberships) }
+                    bottomBar = { 
+                        FitBottomNav(
+                            currentRoute = "home",
+                            onNavigateToHome = { /* Już tu jesteśmy */ },
+                            onNavigateToTrainers = ::navigateToTrainers,
+                            onNavigateToMemberships = ::navigateToMemberships
+                        ) 
+                    }
                 ) { innerPadding ->
                     MainContent(
                         modifier = Modifier.padding(innerPadding),
@@ -167,6 +174,11 @@ class HomeActivity : ComponentActivity() {
 
     private fun navigateToMemberships() {
         val intent = Intent(this, MembershipsActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun navigateToTrainers() {
+        val intent = Intent(this, TrainersActivity::class.java)
         startActivity(intent)
     }
 }
@@ -377,50 +389,6 @@ fun RowScope.TableCell(text: String, weight: Float, isHeader: Boolean = false) {
         fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
         fontSize = 14.sp
     )
-}
-
-@Composable
-fun BottomNav(onNavigateToMemberships: () -> Unit) {
-    NavigationBar(
-        containerColor = Color.White,
-        tonalElevation = 8.dp
-    ) {
-        NavigationBarItem(
-            selected = true,
-            onClick = { /* Nawigacja do Home */ },
-            label = { Text("Panel") },
-            icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Green80,
-                selectedTextColor = Green80,
-                indicatorColor = LightGreen80
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = { /* Nawigacja do Trenera */ },
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = { /* Nawigacja do Profilu */ },
-            label = { Text("Postep") },
-            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToMemberships,
-            label = { Text("Karnety") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Karnety") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = { },
-            label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
-        )
-    }
 }
 
 @Preview(showBackground = true)

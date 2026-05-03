@@ -32,6 +32,12 @@ class FitManagerRepository(
     suspend fun getTrainers(): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getTrainers() }
 
+    suspend fun getAllTrainers(): ApiResult<List<UserResponse>> =
+        executeBodyCall { api.getAllTrainers() }
+
+    suspend fun getTrainerById(id: Int): ApiResult<UserResponse> =
+        executeBodyCall { api.getTrainerById(id) }
+
     suspend fun createTrainer(request: UserUpsertRequest): ApiResult<UserResponse> =
         executeBodyCall { api.createTrainer(request) }
 

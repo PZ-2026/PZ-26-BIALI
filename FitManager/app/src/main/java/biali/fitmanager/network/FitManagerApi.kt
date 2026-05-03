@@ -31,6 +31,12 @@ interface FitManagerApi {
     @GET("api/admin/trainers")
     suspend fun getTrainers(): Response<List<UserResponse>>
 
+    @GET("api/trainers")
+    suspend fun getAllTrainers(): Response<List<UserResponse>>
+
+    @GET("api/trainers/{id}")
+    suspend fun getTrainerById(@Path("id") id: Int): Response<UserResponse>
+
     @POST("api/admin/trainers")
     suspend fun createTrainer(@Body request: UserUpsertRequest): Response<UserResponse>
 
