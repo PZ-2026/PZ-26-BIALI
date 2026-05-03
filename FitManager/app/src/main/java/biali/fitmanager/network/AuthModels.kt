@@ -60,7 +60,15 @@ data class MembershipTypeResponse(
     val description: String? = null
 )
 
+data class MembershipTypeUpsertRequest(
+    val name: String,
+    val price: Double,
+    val durationDays: Int,
+    val description: String? = null
+)
+
 data class PurchaseMembershipRequest(
+    val userId: Int,
     val membershipTypeId: Int
 )
 

@@ -35,7 +35,9 @@ import kotlinx.coroutines.launch
 class HomeActivity : ComponentActivity() {
     private val repository = FitManagerRepository()
     private var displayName by mutableStateOf("Użytkowniku")
+    private var userRole by mutableStateOf<String?>(null)
     private var membership by mutableStateOf<MembershipResponse?>(null)
+    private var isMembershipLoading by mutableStateOf(true)
     private var balance by mutableStateOf<Double?>(null)
     private var membershipTypes by mutableStateOf<List<MembershipTypeResponse>>(emptyList())
 
@@ -49,6 +51,7 @@ class HomeActivity : ComponentActivity() {
             ?: token?.let(SessionManager::resolveEmailFromToken)
         val loggedDisplayName = token?.let(SessionManager::resolveDisplayNameFromToken)
 
+        userRole = SessionManager.getRole() ?: token?.let(SessionManager::resolveRoleFromToken)
         displayName = loggedDisplayName ?: displayNameFromEmail(loggedEmail)
         fetchProfileDisplayNameIfNeeded()
         fetchMembership()
@@ -59,13 +62,14 @@ class HomeActivity : ComponentActivity() {
             GymManagerTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = { Navbar(onLogout = ::logout, balance = balance, onBalanceClick = ::navigateToWallet) },
+                    topBar = { Navbar(onLogout = ::logout, balance = balance, onBalanceClick = ::navigateToWallet, userRole = userRole) },
                     bottomBar = { BottomNav(onNavigateToMemberships = ::navigateToMemberships) }
                 ) { innerPadding ->
                     MainContent(
                         modifier = Modifier.padding(innerPadding),
                         displayName = displayName,
                         membership = membership,
+                        isMembershipLoading = isMembershipLoading,
                         membershipTypes = membershipTypes,
                         onBuyMembership = ::navigateToMemberships
                     )
@@ -76,8 +80,9 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // refresh balance when returning to Home
+        // refresh critical user data when returning to Home
         fetchBalance()
+        fetchMembership()
     }
 
     private fun fetchBalance() {
@@ -124,6 +129,7 @@ class HomeActivity : ComponentActivity() {
 
     private fun fetchMembership() {
         lifecycleScope.launch {
+            isMembershipLoading = true
             when (val result = repository.getMyMembership()) {
                 is ApiResult.Success -> {
                     membership = result.data
@@ -135,6 +141,7 @@ class HomeActivity : ComponentActivity() {
                     }
                 }
             }
+            isMembershipLoading = false
         }
     }
 
@@ -185,7 +192,10 @@ private fun displayNameFromEmail(email: String?): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Navbar(onLogout: () -> Unit, balance: Double? = null, onBalanceClick: () -> Unit = {}) {
+fun Navbar(onLogout: () -> Unit, balance: Double? = null, onBalanceClick: () -> Unit = {}, userRole: String? = null) {
+    val isAdmin = userRole.equals("ADMIN", ignoreCase = true)
+    val isTrainer = userRole.equals("TRAINER", ignoreCase = true)
+    
     TopAppBar(
         title = {
             Row(
@@ -194,10 +204,12 @@ fun Navbar(onLogout: () -> Unit, balance: Double? = null, onBalanceClick: () -> 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                // balance clickable
-                TextButton(onClick = onBalanceClick) {
-                    val display = balance ?: SessionManager.getBalance()
-                    Text("${String.format(java.util.Locale.getDefault(), "%.2f", display)} zł", fontSize = 16.sp)
+                // show balance only for CLIENT role
+                if (!isAdmin && !isTrainer) {
+                    TextButton(onClick = onBalanceClick) {
+                        val display = balance ?: SessionManager.getBalance()
+                        Text("${String.format(java.util.Locale.getDefault(), "%.2f", display)} zł", fontSize = 16.sp)
+                    }
                 }
             }
         },
@@ -214,6 +226,7 @@ fun MainContent(
     modifier: Modifier = Modifier, 
     displayName: String, 
     membership: MembershipResponse?, 
+    isMembershipLoading: Boolean,
     membershipTypes: List<MembershipTypeResponse>,
     onBuyMembership: () -> Unit
 ) {
@@ -231,6 +244,7 @@ fun MainContent(
 
         MembershipSection(
             membership = membership, 
+            isMembershipLoading = isMembershipLoading,
             membershipTypes = membershipTypes,
             onBuyMembership = onBuyMembership
         )
@@ -260,6 +274,7 @@ fun MainContent(
 @Composable
 fun MembershipSection(
     membership: MembershipResponse?, 
+    isMembershipLoading: Boolean,
     membershipTypes: List<MembershipTypeResponse>,
     onBuyMembership: () -> Unit
 ) {
@@ -269,7 +284,15 @@ fun MembershipSection(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            if (membership != null) {
+            if (isMembershipLoading) {
+                Text(
+                    text = "Sprawdzam karnet...",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                CircularProgressIndicator()
+            } else if (membership != null) {
                 Text(
                     text = "Twój aktywny karnet",
                     fontSize = 18.sp,
@@ -407,6 +430,7 @@ fun MainContentPreview() {
         MainContent(
             displayName = "Jan Nowak", 
             membership = null, 
+            isMembershipLoading = false,
             membershipTypes = emptyList(),
             onBuyMembership = {}
         )

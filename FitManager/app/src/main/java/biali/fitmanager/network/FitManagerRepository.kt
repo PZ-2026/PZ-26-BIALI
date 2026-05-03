@@ -59,8 +59,24 @@ class FitManagerRepository(
     suspend fun getMembershipTypes(): ApiResult<List<MembershipTypeResponse>> =
         executeBodyCall { api.getMembershipTypes() }
 
+    suspend fun createMembershipType(request: MembershipTypeUpsertRequest): ApiResult<MembershipTypeResponse> =
+        executeBodyCall { api.createMembershipType(request) }
+
+    suspend fun updateMembershipType(id: Int, request: MembershipTypeUpsertRequest): ApiResult<MembershipTypeResponse> =
+        executeBodyCall { api.updateMembershipType(id, request) }
+
+    suspend fun deleteMembershipType(id: Int): ApiResult<Unit> =
+        executeVoidCall { api.deleteMembershipType(id) }
+
     suspend fun purchaseMembership(request: PurchaseMembershipRequest): ApiResult<MembershipResponse> =
-        executeBodyCall { api.purchaseMembership(request) }
+        safeCall {
+            val primaryResponse = api.purchaseMembership(request)
+            if (primaryResponse.code() == 405) {
+                executeBodyResponse(api.purchaseMembershipForUser(request.userId, request.membershipTypeId))
+            } else {
+                executeBodyResponse(primaryResponse)
+            }
+        }
 
     suspend fun topUpUser(userId: Int, request: TopUpRequest): ApiResult<Unit> =
         executeVoidCall { api.topUpUser(userId, request) }
@@ -100,6 +116,24 @@ class FitManagerRepository(
         }
     }
 
+    private fun <T> executeBodyResponse(response: Response<T>): ApiResult<T> {
+        return when {
+            response.code() == 401 -> {
+                SessionManager.clearSession()
+                ApiResult.Unauthorized
+            }
+            response.isSuccessful -> {
+                val body = response.body()
+                if (body != null) {
+                    ApiResult.Success(body)
+                } else {
+                    ApiResult.Error("Pusta odpowiedź serwera.", response.code())
+                }
+            }
+            else -> ApiResult.Error(parseErrorMessage(response) ?: defaultErrorMessage(response.code()), response.code())
+        }
+    }
+
     private suspend fun <T> safeCall(block: suspend () -> ApiResult<T>): ApiResult<T> {
         return withContext(Dispatchers.IO) {
             try {
@@ -113,11 +147,12 @@ class FitManagerRepository(
     }
 
     private fun <T> parseErrorMessage(response: Response<T>): String? {
-        return runCatching {
-            val raw = response.errorBody()?.string().orEmpty()
-            if (raw.isBlank()) return null
-            gson.fromJson(raw, ErrorResponse::class.java)?.message
-        }.getOrNull()
+        val raw = runCatching { response.errorBody()?.string().orEmpty() }.getOrDefault("")
+        if (raw.isBlank()) return null
+
+        // try JSON {"message":"..."}; if backend returns plain text/HTML, show raw body
+        val parsed = runCatching { gson.fromJson(raw, ErrorResponse::class.java)?.message }.getOrNull()
+        return parsed?.takeIf { it.isNotBlank() } ?: raw
     }
 
     private fun defaultErrorMessage(code: Int): String = when (code) {
@@ -125,6 +160,7 @@ class FitManagerRepository(
         401 -> "Brak autoryzacji."
         403 -> "Brak uprawnień."
         404 -> "Nie znaleziono zasobu."
+        405 -> "Niedozwolona metoda HTTP (405). Sprawdź endpoint zakupu i metodę POST."
         409 -> "Konflikt danych."
         else -> "Wystąpił błąd serwera ($code)."
     }

@@ -131,11 +131,54 @@ class MembershipsActivity : ComponentActivity() {
                         } else {
                             // wykonaj zakup i po sukcesie zmniejsz saldo
                             lifecycleScope.launch {
-                                val request = PurchaseMembershipRequest(membershipTypeId = type.id)
+                                // resolve userId from token or from server
+                                val token = SessionManager.getToken()
+                                var userId: Int? = token?.let { SessionManager.resolveUserIdFromToken(it) }
+                                if (userId == null) {
+                                    when (val meRes = repository.getMe()) {
+                                        is ApiResult.Success -> userId = meRes.data.id
+                                        is ApiResult.Unauthorized -> {
+                                            SessionManager.clearSession()
+                                            val intent = Intent(this@MembershipsActivity, MainActivity::class.java).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                            }
+                                            startActivity(intent)
+                                            finish()
+                                            selectedType = null
+                                            return@launch
+                                        }
+                                        is ApiResult.Error -> {
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar(meRes.message ?: "Nie można pobrać danych użytkownika")
+                                            }
+                                            selectedType = null
+                                            return@launch
+                                        }
+                                    }
+                                }
+
+                                if (userId == null) {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Nieznane ID użytkownika")
+                                    }
+                                    selectedType = null
+                                    return@launch
+                                }
+
+                                val request = PurchaseMembershipRequest(userId = userId!!, membershipTypeId = type.id)
                                 when (val result = repository.purchaseMembership(request)) {
                                     is ApiResult.Success -> {
-                                        // pomniejsz saldo lokalnie
-                                        SessionManager.changeBalanceBy(-type.price)
+                                        // po zakupie spróbuj pobrać profil z serwera i zapisać saldo
+                                        when (val meRes = repository.getMe()) {
+                                            is ApiResult.Success -> {
+                                                meRes.data.balance?.let { SessionManager.saveBalance(it) }
+                                                    ?: SessionManager.changeBalanceBy(-type.price)
+                                            }
+                                            else -> {
+                                                // fallback: pomniejsz lokalnie
+                                                SessionManager.changeBalanceBy(-type.price)
+                                            }
+                                        }
                                         // Po zakupie wróć do HomeActivity
                                         val intent = Intent(this@MembershipsActivity, HomeActivity::class.java).apply {
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -153,7 +196,7 @@ class MembershipsActivity : ComponentActivity() {
                                     }
                                     is ApiResult.Error -> {
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar(result.message ?: "Błąd podczas zakupu")
+                                            snackbarHostState.showSnackbar(getPurchaseErrorMessage(result))
                                         }
                                     }
                                 }
@@ -168,7 +211,20 @@ class MembershipsActivity : ComponentActivity() {
 
     private fun purchaseMembership(type: MembershipTypeResponse) {
         lifecycleScope.launch {
-            val request = PurchaseMembershipRequest(membershipTypeId = type.id)
+            // resolve userId
+            val token = SessionManager.getToken()
+            var userId: Int? = token?.let { SessionManager.resolveUserIdFromToken(it) }
+            if (userId == null) {
+                when (val meRes = repository.getMe()) {
+                    is ApiResult.Success -> userId = meRes.data.id
+                    else -> {
+                        // cannot resolve user id
+                        return@launch
+                    }
+                }
+            }
+
+            val request = PurchaseMembershipRequest(userId = userId!!, membershipTypeId = type.id)
             when (val result = repository.purchaseMembership(request)) {
                 is ApiResult.Success -> {
                     // Po zakupie wróć do HomeActivity
@@ -187,9 +243,16 @@ class MembershipsActivity : ComponentActivity() {
                     finish()
                 }
                 is ApiResult.Error -> {
-                    // Pokaż błąd, np. Toast
+                    // Reserved for potential alternative flow.
                 }
             }
+        }
+    }
+
+    private fun getPurchaseErrorMessage(error: ApiResult.Error): String {
+        return when (error.code) {
+            409 -> "Masz już aktywny karnet. Nowy kupisz po wygaśnięciu obecnego."
+            else -> error.message.ifBlank { "Błąd podczas zakupu" }
         }
     }
 }

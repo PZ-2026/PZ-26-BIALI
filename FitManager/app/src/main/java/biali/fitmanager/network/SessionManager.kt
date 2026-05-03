@@ -11,6 +11,7 @@ object SessionManager {
     private const val KEY_TOKEN = "JWT_TOKEN"
     private const val KEY_ROLE = "USER_ROLE"
     private const val KEY_BALANCE = "USER_BALANCE"
+    private const val KEY_BALANCE_OWNER_ID = "USER_BALANCE_OWNER_ID"
 
     @Volatile
     private var appContext: Context? = null
@@ -26,6 +27,9 @@ object SessionManager {
         val resolvedRole = role ?: resolveRoleFromToken(token)
 
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+            // Prevent showing previous user's cached balance before fresh /api/me arrives.
+            remove(KEY_BALANCE)
+            remove(KEY_BALANCE_OWNER_ID)
             putString(KEY_TOKEN, token)
             putString(KEY_ROLE, resolvedRole)
         }
@@ -36,18 +40,39 @@ object SessionManager {
     fun getRole(): String? = prefs()?.getString(KEY_ROLE, null)
 
     fun clearSession() {
-        prefs()?.edit { clear() }
+        prefs()?.edit {
+            remove(KEY_TOKEN)
+            remove(KEY_ROLE)
+            remove(KEY_BALANCE)
+            remove(KEY_BALANCE_OWNER_ID)
+        }
     }
 
     fun saveBalance(amount: Double) {
+        val ownerKey = currentBalanceOwnerKey()
         prefs()?.edit {
             putString(KEY_BALANCE, amount.toString())
+            if (ownerKey.isNullOrBlank()) {
+                remove(KEY_BALANCE_OWNER_ID)
+            } else {
+                putString(KEY_BALANCE_OWNER_ID, ownerKey)
+            }
         }
     }
 
     fun getBalance(): Double {
-        val raw = prefs()?.getString(KEY_BALANCE, null)
-        return raw?.toDoubleOrNull() ?: 0.0
+        val cached = prefs()?.getString(KEY_BALANCE, null)?.toDoubleOrNull() ?: return 0.0
+        val ownerKey = prefs()?.getString(KEY_BALANCE_OWNER_ID, null)
+        val currentOwnerKey = currentBalanceOwnerKey()
+
+        if (ownerKey.isNullOrBlank()) {
+            return 0.0
+        }
+        if (ownerKey != currentOwnerKey) {
+            return 0.0
+        }
+
+        return cached
     }
 
     fun changeBalanceBy(delta: Double) {
@@ -105,6 +130,21 @@ object SessionManager {
             }
             idAny?.toString()?.toIntOrNull()
         }.getOrNull()
+    }
+
+    private fun currentBalanceOwnerKey(): String? {
+        val token = getToken() ?: return null
+        val userId = resolveUserIdFromToken(token)
+        if (userId != null) {
+            return "id:$userId"
+        }
+
+        val email = resolveEmailFromToken(token)
+        if (!email.isNullOrBlank()) {
+            return "email:${email.lowercase()}"
+        }
+
+        return null
     }
 
     private fun decodePayload(token: String): JSONObject {

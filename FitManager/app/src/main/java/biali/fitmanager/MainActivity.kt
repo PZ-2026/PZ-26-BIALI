@@ -82,6 +82,13 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         SessionManager.saveSession(token, role)
+                        when (val me = repository.getMe()) {
+                            is biali.fitmanager.network.ApiResult.Success -> {
+                                me.data.balance?.let { SessionManager.saveBalance(it) }
+                            }
+                            else -> {
+                            }
+                        }
                         Toast.makeText(this@MainActivity, "Zalogowano!", Toast.LENGTH_SHORT).show()
                         routeToPanel(role, email)
                     }

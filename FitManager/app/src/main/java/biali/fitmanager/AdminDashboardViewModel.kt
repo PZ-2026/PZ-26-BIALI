@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
+import biali.fitmanager.network.MembershipTypeUpsertRequest
 import biali.fitmanager.network.UserResponse
 import biali.fitmanager.network.UserUpsertRequest
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,14 @@ data class AdminUserFormState(
     val phoneNumber: String = ""
 )
 
+data class AdminMembershipTypeFormState(
+    val id: String = "",
+    val name: String = "",
+    val price: String = "",
+    val durationDays: String = "",
+    val description: String = ""
+)
+
 data class AdminDashboardUiState(
     val isLoading: Boolean = false,
     val isTrainerClientsLoading: Boolean = false,
@@ -33,7 +42,9 @@ data class AdminDashboardUiState(
     val trainerClients: List<UserResponse> = emptyList(),
     val trainerIdForClients: String = "",
     val clientIdForAssignment: String = "",
-    val form: AdminUserFormState = AdminUserFormState()
+    val form: AdminUserFormState = AdminUserFormState(),
+    val membershipTypes: List<biali.fitmanager.network.MembershipTypeResponse> = emptyList(),
+    val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState()
 )
 
 class AdminDashboardViewModel(
@@ -51,6 +62,7 @@ class AdminDashboardViewModel(
             _state.update { it.copy(isLoading = true, error = null, message = null) }
             loadUsersInternal(_state.value.selectedUserRoleFilter)
             loadTrainersInternal()
+            loadMembershipTypesInternal()
             _state.update { it.copy(isLoading = false) }
         }
     }
@@ -70,6 +82,10 @@ class AdminDashboardViewModel(
 
     fun onFormChanged(transform: (AdminUserFormState) -> AdminUserFormState) {
         _state.update { current -> current.copy(form = transform(current.form)) }
+    }
+
+    fun onMembershipTypeFieldChange(transform: (AdminMembershipTypeFormState) -> AdminMembershipTypeFormState) {
+        _state.update { current -> current.copy(membershipTypeForm = transform(current.membershipTypeForm)) }
     }
 
     fun fillFormFromUser(user: UserResponse) {
@@ -92,6 +108,26 @@ class AdminDashboardViewModel(
 
     fun clearForm() {
         _state.update { it.copy(form = AdminUserFormState(), message = null, error = null) }
+    }
+
+    fun fillMembershipTypeForm(membershipType: biali.fitmanager.network.MembershipTypeResponse) {
+        _state.update {
+            it.copy(
+                membershipTypeForm = AdminMembershipTypeFormState(
+                    id = membershipType.id.toString(),
+                    name = membershipType.name,
+                    price = membershipType.price.toString(),
+                    durationDays = membershipType.durationDays.toString(),
+                    description = membershipType.description.orEmpty()
+                ),
+                message = null,
+                error = null
+            )
+        }
+    }
+
+    fun clearMembershipTypeForm() {
+        _state.update { it.copy(membershipTypeForm = AdminMembershipTypeFormState(), message = null, error = null) }
     }
 
     fun loadUsers(role: String? = _state.value.selectedUserRoleFilter) {
@@ -138,6 +174,37 @@ class AdminDashboardViewModel(
         }
     }
 
+    fun saveMembershipTypeForm() {
+        val form = _state.value.membershipTypeForm
+        val request = MembershipTypeUpsertRequest(
+            name = form.name.trim(),
+            price = form.price.toDoubleOrNull() ?: 0.0,
+            durationDays = form.durationDays.toIntOrNull() ?: 1,
+            description = form.description.trim().ifBlank { null }
+        )
+        val id = form.id.toIntOrNull()
+
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null, message = null) }
+            val result = if (id == null) {
+                repository.createMembershipType(request)
+            } else {
+                repository.updateMembershipType(id, request)
+            }
+
+            when (result) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(message = "Typ karnetu zapisany pomyślnie.", error = null) }
+                    loadMembershipTypesInternal()
+                    clearMembershipTypeForm()
+                }
+                is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true) }
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, message = null) }
+            }
+            _state.update { it.copy(isLoading = false) }
+        }
+    }
+
     fun deleteUser(user: UserResponse) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, message = null) }
@@ -147,6 +214,22 @@ class AdminDashboardViewModel(
                 repository.deleteUser(user.id)
             }
             handleMutationResult(result, refreshClientsIfNeeded = false)
+            _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun deleteMembershipType(id: Int) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null, message = null) }
+            when (val result = repository.deleteMembershipType(id)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(message = "Typ karnetu usunięty pomyślnie.", error = null) }
+                    loadMembershipTypesInternal()
+                    clearMembershipTypeForm()
+                }
+                is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true) }
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, message = null) }
+            }
             _state.update { it.copy(isLoading = false) }
         }
     }
@@ -209,6 +292,14 @@ class AdminDashboardViewModel(
     private suspend fun loadTrainersInternal() {
         when (val result = repository.getTrainers()) {
             is ApiResult.Success -> _state.update { it.copy(trainers = result.data) }
+            is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true) }
+            is ApiResult.Error -> _state.update { it.copy(error = result.message) }
+        }
+    }
+
+    private suspend fun loadMembershipTypesInternal() {
+        when (val result = repository.getMembershipTypes()) {
+            is ApiResult.Success -> _state.update { it.copy(membershipTypes = result.data) }
             is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true) }
             is ApiResult.Error -> _state.update { it.copy(error = result.message) }
         }

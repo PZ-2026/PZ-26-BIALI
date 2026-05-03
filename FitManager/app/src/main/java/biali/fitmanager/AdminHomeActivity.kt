@@ -101,7 +101,12 @@ class AdminHomeActivity : ComponentActivity() {
                         onClientIdChange = viewModel::onClientIdChanged,
                         onLoadTrainerClients = viewModel::loadTrainerClients,
                         onAssignClient = viewModel::assignClient,
-                        onUnassignClient = viewModel::unassignClient
+                        onUnassignClient = viewModel::unassignClient,
+                        onMembershipTypeFieldChange = viewModel::onMembershipTypeFieldChange,
+                        onMembershipTypeSave = viewModel::saveMembershipTypeForm,
+                        onMembershipTypeClear = viewModel::clearMembershipTypeForm,
+                        onEditMembershipType = viewModel::fillMembershipTypeForm,
+                        onDeleteMembershipType = viewModel::deleteMembershipType
                     )
                 }
             }
@@ -137,7 +142,6 @@ private fun AdminTopBar(onLogout: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("230.00zł", fontSize = 16.sp)
             }
         },
         actions = {
@@ -165,7 +169,12 @@ private fun AdminDashboardScreen(
     onClientIdChange: (String) -> Unit,
     onLoadTrainerClients: () -> Unit,
     onAssignClient: () -> Unit,
-    onUnassignClient: () -> Unit
+    onUnassignClient: () -> Unit,
+    onMembershipTypeFieldChange: ((AdminMembershipTypeFormState) -> AdminMembershipTypeFormState) -> Unit,
+    onMembershipTypeSave: () -> Unit,
+    onMembershipTypeClear: () -> Unit,
+    onEditMembershipType: (biali.fitmanager.network.MembershipTypeResponse) -> Unit,
+    onDeleteMembershipType: (Int) -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -224,6 +233,15 @@ private fun AdminDashboardScreen(
             trainers = state.trainers,
             onEditUser = onEditUser,
             onDeleteUser = onDeleteUser
+        )
+
+        AdminMembershipTypesSection(
+            state = state,
+            onMembershipTypeFieldChange = onMembershipTypeFieldChange,
+            onSave = onMembershipTypeSave,
+            onClear = onMembershipTypeClear,
+            onEditMembershipType = onEditMembershipType,
+            onDeleteMembershipType = onDeleteMembershipType
         )
 
         AdminTrainerClientsSection(
@@ -392,7 +410,13 @@ private fun AdminUserFormSection(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSave) { Text("Zapisz") }
-                OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                if (state.form.id.isNotBlank()) {
+                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                        Text("Anuluj edycję")
+                    }
+                } else {
+                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                }
             }
         }
     }
@@ -441,4 +465,81 @@ private fun AdminTrainerClientsSection(
         }
     }
 }
+
+@Composable
+private fun AdminMembershipTypesSection(
+    state: AdminDashboardUiState,
+    onMembershipTypeFieldChange: ((AdminMembershipTypeFormState) -> AdminMembershipTypeFormState) -> Unit,
+    onSave: () -> Unit,
+    onClear: () -> Unit,
+    onEditMembershipType: (biali.fitmanager.network.MembershipTypeResponse) -> Unit,
+    onDeleteMembershipType: (Int) -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Typy karnetów", fontWeight = FontWeight.Bold)
+            
+            state.membershipTypes.forEach { membershipType ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("${membershipType.name} • ${membershipType.price}zł • ${membershipType.durationDays} dni", fontWeight = FontWeight.SemiBold)
+                    if (membershipType.description != null) Text(membershipType.description, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onEditMembershipType(membershipType) }) {
+                            Icon(Icons.Filled.Edit, contentDescription = null)
+                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                            Text("Edytuj")
+                        }
+                        OutlinedButton(onClick = { onDeleteMembershipType(membershipType.id) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = null)
+                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                            Text("Usuń")
+                        }
+                    }
+                    HorizontalDivider()
+                }
+            }
+
+            HorizontalDivider()
+            Text(if (state.membershipTypeForm.id.isBlank()) "Dodaj / edytuj typ karnetu" else "Edycja typu #${state.membershipTypeForm.id}", fontWeight = FontWeight.Bold)
+
+            OutlinedTextField(
+                value = state.membershipTypeForm.name,
+                onValueChange = { value -> onMembershipTypeFieldChange { it.copy(name = value) } },
+                label = { Text("Nazwa") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = state.membershipTypeForm.price,
+                onValueChange = { value -> onMembershipTypeFieldChange { it.copy(price = value) } },
+                label = { Text("Cena") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = state.membershipTypeForm.durationDays,
+                onValueChange = { value -> onMembershipTypeFieldChange { it.copy(durationDays = value) } },
+                label = { Text("Liczba dni") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = state.membershipTypeForm.description,
+                onValueChange = { value -> onMembershipTypeFieldChange { it.copy(description = value) } },
+                label = { Text("Opis (opcjonalnie)") },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 3
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onSave) { Text("Zapisz") }
+                if (state.membershipTypeForm.id.isNotBlank()) {
+                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                        Text("Anuluj edycję")
+                    }
+                } else {
+                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                }
+            }
+        }
+    }
+}
+
 

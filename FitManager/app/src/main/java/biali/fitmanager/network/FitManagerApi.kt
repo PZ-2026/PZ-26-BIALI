@@ -64,8 +64,25 @@ interface FitManagerApi {
     @GET("api/membership-types")
     suspend fun getMembershipTypes(): Response<List<MembershipTypeResponse>>
 
-    @POST("api/memberships")
+    @POST("api/admin/membership-types")
+    suspend fun createMembershipType(@Body request: MembershipTypeUpsertRequest): Response<MembershipTypeResponse>
+
+    @PUT("api/admin/membership-types/{id}")
+    suspend fun updateMembershipType(@Path("id") id: Int, @Body request: MembershipTypeUpsertRequest): Response<MembershipTypeResponse>
+
+    @DELETE("api/admin/membership-types/{id}")
+    suspend fun deleteMembershipType(@Path("id") id: Int): Response<Void>
+
+    // backend endpoint for membership purchase
+    @POST("api/memberships/purchase")
     suspend fun purchaseMembership(@Body request: PurchaseMembershipRequest): Response<MembershipResponse>
+
+    // compatibility endpoint used by older backend variants
+    @POST("api/users/{id}/purchase-membership/{membershipTypeId}")
+    suspend fun purchaseMembershipForUser(
+        @Path("id") id: Int,
+        @Path("membershipTypeId") membershipTypeId: Int
+    ): Response<MembershipResponse>
 
     @POST("api/users/{id}/topup")
     suspend fun topUpUser(@Path("id") id: Int, @Body request: TopUpRequest): Response<Void>

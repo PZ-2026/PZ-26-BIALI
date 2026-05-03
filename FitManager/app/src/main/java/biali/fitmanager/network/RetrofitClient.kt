@@ -1,6 +1,7 @@
 package biali.fitmanager.network
 
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -8,7 +9,10 @@ object RetrofitClient {
     private const val BASE_URL = "http://10.0.2.2:8080/"
 
     private val okHttpClient: OkHttpClient by lazy {
+        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
+
         OkHttpClient.Builder()
+            .addInterceptor(logging)
             .addInterceptor { chain ->
                 val token = SessionManager.getToken()
                 val request = chain.request().newBuilder().apply {

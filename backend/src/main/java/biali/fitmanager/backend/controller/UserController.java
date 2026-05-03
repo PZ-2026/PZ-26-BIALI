@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -103,6 +104,7 @@ public class UserController {
     }
 
     @PostMapping("/{id}/purchase-membership/{membershipTypeId}")
+    @Transactional
     public ResponseEntity<?> purchaseMembership(@PathVariable Integer id, @PathVariable Integer membershipTypeId, org.springframework.security.core.Authentication authentication) {
         var authEmail = authentication.getName();
         var authUserOpt = appUserRepository.findByEmail(authEmail);
@@ -113,6 +115,11 @@ public class UserController {
         var authUser = authUserOpt.get();
         if (!"ADMIN".equalsIgnoreCase(authUser.getRole()) && !authUser.getId().equals(id)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new AuthErrorResponse("Forbidden"));
+        }
+
+        if (membershipRepository.existsByUserIdAndStatus(id, "ACTIVE")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new AuthErrorResponse("User already has an active membership"));
         }
 
         var userOpt = appUserRepository.findById(id);
