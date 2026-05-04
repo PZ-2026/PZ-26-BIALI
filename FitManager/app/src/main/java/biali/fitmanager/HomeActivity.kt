@@ -285,56 +285,106 @@ fun MainContent(
 
 @Composable
 fun MembershipSection(
-    membership: MembershipResponse?, 
+    membership: MembershipResponse?,
     isMembershipLoading: Boolean,
     membershipTypes: List<MembershipTypeResponse>,
     onBuyMembership: () -> Unit
 ) {
+
+    val hasMembership = membership != null
+
+    val backgroundColor = when {
+        isMembershipLoading -> Color.LightGray.copy(alpha = 0.4f)
+        hasMembership -> Color(0xFF4CAF50) // zielony
+        else -> Color(0xFFF44336) // czerwony
+    }
+
+    val textColor = if (isMembershipLoading) Color.Black else Color.White
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.LightGray.copy(alpha = 0.4f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+
             if (isMembershipLoading) {
                 Text(
                     text = "Sprawdzam karnet...",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
+                    color = textColor,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 CircularProgressIndicator()
-            } else if (membership != null) {
+            }
+
+            else if (membership != null) {
+
                 Text(
                     text = "Twój aktywny karnet",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Green80,
+                    color = textColor,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                Text("Typ: ${membership.membershipType.name}", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                Text("Cena: ${membership.membershipType.price} zł", fontSize = 16.sp)
-                Text("Wygasa: ${membership.endDate}", fontSize = 16.sp)
-            } else {
+
+                Text(
+                    "Typ: ${membership.membershipType.name}",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = textColor
+                )
+
+                Text(
+                    "Cena: ${membership.membershipType.price} zł",
+                    fontSize = 16.sp,
+                    color = textColor
+                )
+
+                Text(
+                    "Wygasa: ${membership.endDate}",
+                    fontSize = 16.sp,
+                    color = textColor
+                )
+            }
+
+            else {
+
                 Text(
                     text = "Brak aktywnego karnetu",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
+                    color = textColor,
                     modifier = Modifier.padding(bottom = 8.dp)
+
                 )
-                
+
                 if (membershipTypes.isNotEmpty()) {
-                    Text("Dostępne opcje:", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Dostępne opcje:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textColor
+                    )
+
                     membershipTypes.forEach { type ->
-                        Text("• ${type.name} - ${type.price} zł", fontSize = 14.sp)
+                        Text(
+                            "• ${type.name} - ${type.price} zł",
+                            fontSize = 14.sp,
+                            color = textColor
+                        )
                     }
+
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 Button(
                     onClick = onBuyMembership,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Black,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("Kup karnet")
                 }

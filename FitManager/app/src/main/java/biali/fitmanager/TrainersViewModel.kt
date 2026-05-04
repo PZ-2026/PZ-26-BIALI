@@ -18,7 +18,10 @@ data class TrainersUiState(
     val error: String? = null,
     val sessionExpired: Boolean = false,
     val showDetails: Boolean = false,
-    val actionSuccess: String? = null
+    val actionSuccess: String? = null,
+    val currentTrainerId: Int? = null,
+    val currentTrainer: UserResponse? = null,
+    val currentTrainerEndDate: String? = null
 )
 
 class TrainersViewModel(
@@ -33,7 +36,35 @@ class TrainersViewModel(
             _state.update { it.copy(isLoading = true, error = null) }
             when (val result = repository.getAllTrainers()) {
                 is ApiResult.Success -> {
-                    _state.update { it.copy(trainers = result.data, isLoading = false) }
+                    // Also fetch current user info to check if they have a trainer
+                    when (val meResult = repository.getMe()) {
+                        is ApiResult.Success -> {
+                            val trainerId = meResult.data.trainerId
+                            val trainerEnd = meResult.data.trainerEndDate
+                            if (trainerId != null) {
+                                // Fetch current trainer details
+                                when (val trainerResult = repository.getTrainerById(trainerId)) {
+                                    is ApiResult.Success -> {
+                                        _state.update { it.copy(trainers = result.data, currentTrainerId = trainerId, currentTrainer = trainerResult.data, currentTrainerEndDate = trainerEnd, isLoading = false) }
+                                    }
+                                    is ApiResult.Error -> {
+                                        _state.update { it.copy(trainers = result.data, currentTrainerId = trainerId, error = "Nie udało się pobrać danych trenera", currentTrainerEndDate = trainerEnd, isLoading = false) }
+                                    }
+                                    is ApiResult.Unauthorized -> {
+                                        _state.update { it.copy(sessionExpired = true, isLoading = false) }
+                                    }
+                                }
+                            } else {
+                                _state.update { it.copy(trainers = result.data, currentTrainerId = null, currentTrainer = null, currentTrainerEndDate = null, isLoading = false) }
+                            }
+                        }
+                        is ApiResult.Error -> {
+                            _state.update { it.copy(trainers = result.data, error = "Nie udało się pobrać informacji o użytkowniku", isLoading = false) }
+                        }
+                        is ApiResult.Unauthorized -> {
+                            _state.update { it.copy(sessionExpired = true, isLoading = false) }
+                        }
+                    }
                 }
                 is ApiResult.Error -> {
                     _state.update { it.copy(error = result.message, isLoading = false) }
@@ -70,28 +101,38 @@ class TrainersViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, actionSuccess = null) }
             
-            // We need current user ID to assign. 
-            // In FitManagerApi, assignClientToTrainer takes (trainerId, clientId)
-            // We assume the user is the client.
-            
-            val myInfo = repository.getMe()
-            if (myInfo is ApiResult.Success) {
-                val clientId = myInfo.data.id
-                when (val result = repository.assignClientToTrainer(trainerId, clientId)) {
-                    is ApiResult.Success -> {
-                        _state.update { it.copy(actionSuccess = "Pomyślnie wybrano trenera!", isLoading = false) }
-                    }
-                    is ApiResult.Error -> {
-                        _state.update { it.copy(error = result.message, isLoading = false) }
-                    }
-                    is ApiResult.Unauthorized -> {
-                        _state.update { it.copy(sessionExpired = true, isLoading = false) }
-                    }
+            when (val result = repository.chooseTrainer(trainerId)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(actionSuccess = "Pomyślnie wybrano trenera!", isLoading = false) }
+                    // refresh data to get trainer end date and current trainer info
+                    fetchTrainers()
                 }
-            } else if (myInfo is ApiResult.Unauthorized) {
-                _state.update { it.copy(sessionExpired = true, isLoading = false) }
-            } else if (myInfo is ApiResult.Error) {
-                _state.update { it.copy(error = "Nie udało się pobrać informacji o użytkowniku", isLoading = false) }
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = result.message, isLoading = false) }
+                }
+                is ApiResult.Unauthorized -> {
+                    _state.update { it.copy(sessionExpired = true, isLoading = false) }
+                }
+            }
+        }
+    }
+
+    fun resignTrainer(trainerId: Int) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null, actionSuccess = null) }
+
+            when (val result = repository.resignTrainer(trainerId)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(actionSuccess = "Pomyślnie zrezygnowano z trenera!", isLoading = false) }
+                    // refresh to clear trainer info
+                    fetchTrainers()
+                }
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = result.message, isLoading = false) }
+                }
+                is ApiResult.Unauthorized -> {
+                    _state.update { it.copy(sessionExpired = true, isLoading = false) }
+                }
             }
         }
     }

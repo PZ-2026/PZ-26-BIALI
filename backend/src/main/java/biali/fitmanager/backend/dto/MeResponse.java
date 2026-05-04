@@ -9,6 +9,8 @@ public record MeResponse(
         String lastName,
         String phoneNumber,
         BigDecimal accountBalance,
-        String name
+        String name,
+        Integer trainerId,
+        String trainerEndDate
 ) {
 }

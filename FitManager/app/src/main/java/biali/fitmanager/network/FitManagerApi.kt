@@ -92,4 +92,10 @@ interface FitManagerApi {
 
     @POST("api/users/{id}/topup")
     suspend fun topUpUser(@Path("id") id: Int, @Body request: TopUpRequest): Response<Void>
+
+    @POST("api/trainers/{trainerId}/choose")
+    suspend fun chooseTrainer(@Path("trainerId") trainerId: Int): Response<Void>
+
+    @DELETE("api/trainers/{trainerId}/choose")
+    suspend fun resignTrainer(@Path("trainerId") trainerId: Int): Response<Void>
 }

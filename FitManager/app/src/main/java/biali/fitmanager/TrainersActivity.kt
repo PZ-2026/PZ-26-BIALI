@@ -1,18 +1,18 @@
 package biali.fitmanager
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +26,9 @@ import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.UserResponse
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
-import biali.fitmanager.ui.theme.LightGreen80
+import androidx.compose.runtime.Composable
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class TrainersActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +83,9 @@ class TrainersActivity : ComponentActivity() {
                             isLoading = state.isLoading,
                             error = state.error,
                             successMessage = state.actionSuccess,
-                            onPickTrainer = { viewModel.pickTrainer(it) }
+                            onPickTrainer = { viewModel.pickTrainer(it) },
+                            onResignTrainer = { viewModel.resignTrainer(it) },
+                            currentTrainerId = state.currentTrainerId
                         )
                     } else {
                         TrainersListContent(
@@ -90,12 +94,22 @@ class TrainersActivity : ComponentActivity() {
                             isLoading = state.isLoading,
                             error = state.error,
                             onTrainerClick = { viewModel.selectTrainer(it.id) },
-                            onRefresh = { viewModel.fetchTrainers() }
+                            onRefresh = { viewModel.fetchTrainers() },
+                            currentTrainerId = state.currentTrainerId,
+                            currentTrainer = state.currentTrainer,
+                            currentTrainerEndDate = state.currentTrainerEndDate
                         )
                     }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Odśwież dane trenerów przy każdym wejściu do aktywności
+        val viewModel = ViewModelProvider(this)[TrainersViewModel::class.java]
+        viewModel.fetchTrainers()
     }
 
     private fun logout() {
@@ -121,6 +135,7 @@ fun TrainersTopBar(showBack: Boolean, onBack: () -> Unit, onClose: () -> Unit) {
     )
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TrainersListContent(
     modifier: Modifier = Modifier,
@@ -128,29 +143,73 @@ fun TrainersListContent(
     isLoading: Boolean,
     error: String?,
     onTrainerClick: (UserResponse) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    currentTrainerId: Int?,
+    currentTrainer: UserResponse?,
+    currentTrainerEndDate: String?
 ) {
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+    // Formatter do docelowego formatu
+    val outputFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+
+    // Jeśli backend daje np. "2025-05-04" (ISO), używamy tego:
+    val inputFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+    val formattedEndDate = try {
+        currentTrainerEndDate?.let {
+            LocalDate.parse(it, inputFormatter).format(outputFormatter)
+        }
+    } catch (e: Exception) {
+        null // fallback jeśli format się nie zgadza
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+
+        val title = if (currentTrainer != null) {
+            val endPart = formattedEndDate?.let { " do $it" } ?: ""
+            "Twoim trenerem jest ${currentTrainer.firstName} ${currentTrainer.lastName}$endPart r."
+        } else {
+            "Wybierz swojego trenera"
+        }
+
         Text(
-            text = "Wybierz swojego trenera",
+            text = title,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
         if (isLoading && trainers.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator()
             }
         } else {
             if (error != null) {
-                Text(text = error, color = Color.Red, modifier = Modifier.padding(bottom = 8.dp))
-                Button(onClick = onRefresh) { Text("Odśwież") }
+                Text(
+                    text = error,
+                    color = Color.Red,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Button(onClick = onRefresh) {
+                    Text("Odśwież")
+                }
             }
 
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 items(trainers) { trainer ->
-                    TrainerCard(trainer = trainer, onClick = { onTrainerClick(trainer) })
+                    TrainerCard(
+                        trainer = trainer,
+                        onClick = { onTrainerClick(trainer) },
+                        isSelected = trainer.id == currentTrainerId
+                    )
                 }
             }
         }
@@ -158,12 +217,16 @@ fun TrainersListContent(
 }
 
 @Composable
-fun TrainerCard(trainer: UserResponse, onClick: () -> Unit) {
+fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean = false) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Green80 else Color.White,
+            contentColor = if (isSelected) Color.White else Color.Black
+        )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -175,9 +238,11 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit) {
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(text = trainer.email, fontSize = 14.sp, color = Color.Gray)
+                Text(text = trainer.email, fontSize = 14.sp)
+                // Show trainer rental price (matches backend rental price)
+                Text(text = "Cena wynajmu: 199.99 PLN / 30 dni", fontSize = 13.sp)
             }
-            Text("Szczegóły >", fontSize = 14.sp, color = Green80)
+            Text("Szczegóły >", fontSize = 14.sp)
         }
     }
 }
@@ -189,7 +254,9 @@ fun TrainerDetailsContent(
     isLoading: Boolean,
     error: String?,
     successMessage: String?,
-    onPickTrainer: (Int) -> Unit
+    onPickTrainer: (Int) -> Unit,
+    onResignTrainer: (Int) -> Unit,
+    currentTrainerId: Int?
 ) {
     Column(
         modifier = modifier
@@ -225,6 +292,8 @@ fun TrainerDetailsContent(
                     fontSize = 15.sp,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = "Cena wynajmu: 199.99 PLN / 30 dni", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -243,12 +312,18 @@ fun TrainerDetailsContent(
         if (isLoading) {
             CircularProgressIndicator()
         } else {
+            val isCurrentTrainer = trainer.id == currentTrainerId
             Button(
-                onClick = { onPickTrainer(trainer.id) },
+                onClick = { if (isCurrentTrainer) onResignTrainer(trainer.id) else onPickTrainer(trainer.id) },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Green80)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isCurrentTrainer) Color.Red else Green80
+                )
             ) {
-                Text("Wybierz tego trenera", color = Color.White)
+                Text(
+                    text = if (isCurrentTrainer) "Zrezygnuj z trenera" else "Wybierz tego trenera",
+                    color = Color.White
+                )
             }
         }
     }

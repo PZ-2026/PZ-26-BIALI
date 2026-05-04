@@ -1,6 +1,6 @@
 -- opcjonalnie czyszczenie
 DROP TABLE IF EXISTS training_plans, progress_logs, reservations, training_sessions,
-payments, memberships, membership_types, trainer_clients, users CASCADE;
+payments, memberships, membership_types, trainer_clients, trainer_rentals, users CASCADE;
 
 -----------------------------------------------------------
 -- 1. USERS
@@ -26,6 +26,24 @@ CREATE TABLE trainer_clients (
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE (trainer_id, client_id)
 );
+
+-----------------------------------------------------------
+-- 2.1 TRAINER RENTALS
+-----------------------------------------------------------
+CREATE TABLE trainer_rentals (
+    id SERIAL PRIMARY KEY,
+    trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- only one active trainer rental per client
+CREATE UNIQUE INDEX unique_active_trainer_rental_per_client
+ON trainer_rentals(client_id)
+WHERE status = 'ACTIVE';
 
 -----------------------------------------------------------
 -- 3. MEMBERSHIP TYPES (NOWA TABELA)

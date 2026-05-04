@@ -31,7 +31,9 @@ data class MeResponse(
     val lastName: String,
     val phoneNumber: String? = null,
     val name: String? = null,
-    val balance: Double? = null
+    val balance: Double? = null,
+    val trainerId: Int? = null,
+    val trainerEndDate: String? = null
 )
 
 data class UserUpsertRequest(

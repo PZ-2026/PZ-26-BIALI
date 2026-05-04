@@ -15,9 +15,12 @@ import biali.fitmanager.backend.repository.AppUserRepository;
 public class ProfileController {
 
     private final AppUserRepository appUserRepository;
+    private final biali.fitmanager.backend.repository.TrainerRentalRepository trainerRentalRepository;
 
-    public ProfileController(AppUserRepository appUserRepository) {
+    public ProfileController(AppUserRepository appUserRepository,
+                             biali.fitmanager.backend.repository.TrainerRentalRepository trainerRentalRepository) {
         this.appUserRepository = appUserRepository;
+        this.trainerRentalRepository = trainerRentalRepository;
     }
 
     @GetMapping("/api/me")
@@ -30,15 +33,27 @@ public class ProfileController {
         }
 
         String name = (safe(user.getFirstName()) + " " + safe(user.getLastName())).trim();
+
+        // find active trainer rental for this user (client)
+        var active = trainerRentalRepository.findAllByClientId(user.getId())
+            .stream()
+            .filter(r -> "ACTIVE".equalsIgnoreCase(r.getStatus()))
+            .findFirst();
+
+        Integer trainerId = active.map(biali.fitmanager.backend.model.TrainerRental::getTrainerId).orElse(null);
+        String trainerEnd = active.map(r -> r.getEndDate().toString()).orElse(null);
+
         return ResponseEntity.ok(new MeResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getPhoneNumber(),
-                user.getAccountBalance(),
-                name
+            user.getId(),
+            user.getEmail(),
+            user.getRole(),
+            user.getFirstName(),
+            user.getLastName(),
+            user.getPhoneNumber(),
+            user.getAccountBalance(),
+            name,
+            trainerId,
+            trainerEnd
         ));
     }
 

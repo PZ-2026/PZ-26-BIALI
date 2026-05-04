@@ -1,6 +1,8 @@
+import org.springframework.boot.gradle.tasks.bundling.BootJar
+
 plugins {
         java
-        id("org.springframework.boot") version "3.2.4"
+        id("org.springframework.boot") version "3.1.7"
         id("io.spring.dependency-management") version "1.1.7"
 }
 
@@ -33,4 +35,20 @@ dependencies {
 
 tasks.withType<Test> {
         useJUnitPlatform()
+}
+
+// Workaround: disable bootJar task to avoid Gradle/Spring Boot plugin incompatibility
+// Disable building the fat bootJar to avoid runtime Gradle API mismatch in this environment.
+// The app can still be run with `bootRun` during development.
+tasks.withType<BootJar> {
+        enabled = false
+}
+
+tasks.withType<org.gradle.jvm.tasks.Jar> {
+        enabled = true
+}
+
+// Ensure bootJar task is disabled by name as an extra safeguard
+tasks.named("bootJar") {
+        enabled = false
 }
