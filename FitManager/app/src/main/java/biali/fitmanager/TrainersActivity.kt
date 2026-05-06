@@ -71,6 +71,11 @@ class TrainersActivity : ComponentActivity() {
                                     val intent = Intent(this@TrainersActivity, MembershipsActivity::class.java)
                                     startActivity(intent)
                                     finish()
+                                },
+                                onNavigateToProgress = {
+                                    val intent = Intent(this@TrainersActivity, ProgressActivity::class.java)
+                                    startActivity(intent)
+                                    finish()
                                 }
                             )
                         }

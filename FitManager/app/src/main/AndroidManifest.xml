@@ -28,5 +28,6 @@
         <activity android:name=".TrainerUsersActivity" />
         <activity android:name=".TrainersActivity" />
         <activity android:name=".AdminHomeActivity" />
+        <activity android:name=".ProgressActivity" android:exported="false" />
     </application>
 </manifest>
