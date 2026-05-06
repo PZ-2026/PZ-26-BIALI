@@ -16,7 +16,8 @@ fun FitBottomNav(
     currentRoute: String,
     onNavigateToHome: () -> Unit,
     onNavigateToTrainers: () -> Unit,
-    onNavigateToMemberships: () -> Unit
+    onNavigateToMemberships: () -> Unit,
+    onNavigateToProgress: () -> Unit
 ) {
     NavigationBar(
         containerColor = Color.White,
@@ -44,11 +45,17 @@ fun FitBottomNav(
                 indicatorColor = LightGreen80
             )
         )
+
         NavigationBarItem(
             selected = currentRoute == "progress",
-            onClick = { },
+            onClick = onNavigateToProgress,
             label = { Text("Postęp") },
-            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
+            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
         )
         NavigationBarItem(
             selected = currentRoute == "memberships",

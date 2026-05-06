@@ -68,7 +68,8 @@ class HomeActivity : ComponentActivity() {
                             currentRoute = "home",
                             onNavigateToHome = { /* Już tu jesteśmy */ },
                             onNavigateToTrainers = ::navigateToTrainers,
-                            onNavigateToMemberships = ::navigateToMemberships
+                            onNavigateToMemberships = ::navigateToMemberships,
+                                    onNavigateToProgress = ::navigateToProgress
                         ) 
                     }
                 ) { innerPadding ->
@@ -179,6 +180,11 @@ class HomeActivity : ComponentActivity() {
 
     private fun navigateToTrainers() {
         val intent = Intent(this, TrainersActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun navigateToProgress() {
+        val intent = Intent(this, ProgressActivity::class.java)
         startActivity(intent)
     }
 }

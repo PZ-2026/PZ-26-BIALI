@@ -92,6 +92,8 @@ class FitManagerRepository(
 
     suspend fun resignTrainer(trainerId: Int): ApiResult<Unit> =
         executeVoidCall { api.resignTrainer(trainerId) }
+    suspend fun getProgressSummary(): ApiResult<ProgressSummaryResponse> =
+        executeBodyCall { api.getProgressSummary() }
 
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {
