@@ -4,6 +4,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Streaming
 import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -12,6 +13,9 @@ import retrofit2.http.Query
 interface FitManagerApi {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
+
+    @POST("api/auth/register")
+    suspend fun register(@Body request: RegisterRequest): Response<LoginResponse>
 
     @GET("api/me")
     suspend fun getMe(): Response<MeResponse>
@@ -101,4 +105,8 @@ interface FitManagerApi {
 
     @GET("/api/progress/summary")
     suspend fun getProgressSummary(): retrofit2.Response<ProgressSummaryResponse>
+
+    @Streaming
+    @GET("api/admin/reports/users/pdf")
+    suspend fun downloadUsersReportPdf(): Response<okhttp3.ResponseBody>
 }

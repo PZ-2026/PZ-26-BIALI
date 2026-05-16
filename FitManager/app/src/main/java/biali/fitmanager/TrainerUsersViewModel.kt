@@ -17,9 +17,8 @@ data class TrainerUsersUiState(
     val clients: List<UserResponse> = emptyList()
 )
 
-class TrainerUsersViewModel(
-    private val repository: FitManagerRepository = FitManagerRepository()
-) : ViewModel() {
+class TrainerUsersViewModel : ViewModel() {
+    private val repository = FitManagerRepository()
     private val _state = MutableStateFlow(TrainerUsersUiState())
     val state = _state.asStateFlow()
 

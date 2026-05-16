@@ -14,6 +14,9 @@ class FitManagerRepository(
     suspend fun login(request: LoginRequest): ApiResult<LoginResponse> =
         executeBodyCall { api.login(request) }
 
+    suspend fun register(request: RegisterRequest): ApiResult<LoginResponse> =
+        executeBodyCall { api.register(request) }
+
     suspend fun getMe(): ApiResult<MeResponse> =
         executeBodyCall { api.getMe() }
 
@@ -94,6 +97,12 @@ class FitManagerRepository(
         executeVoidCall { api.resignTrainer(trainerId) }
     suspend fun getProgressSummary(): ApiResult<ProgressSummaryResponse> =
         executeBodyCall { api.getProgressSummary() }
+
+    suspend fun downloadUsersReportPdf(): ApiResult<okhttp3.ResponseBody> =
+        safeCall {
+            val response = api.downloadUsersReportPdf()
+            executeBodyResponse(response)
+        }
 
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {

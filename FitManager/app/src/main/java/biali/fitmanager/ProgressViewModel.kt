@@ -19,10 +19,9 @@ data class ProgressUiState(
     val sessionExpired: Boolean = false
 )
 
-class ProgressViewModel(
+class ProgressViewModel : ViewModel() {
     // Wstrzykujemy repozytorium tak samo jak u trenerów
-    private val repository: FitManagerRepository = FitManagerRepository()
-) : ViewModel() {
+    private val repository = FitManagerRepository()
 
     private val _state = MutableStateFlow(ProgressUiState())
     val state: StateFlow<ProgressUiState> = _state.asStateFlow()
@@ -41,7 +40,7 @@ class ProgressViewModel(
                 }
                 is ApiResult.Error -> {
                     _state.update {
-                        it.copy(error = result.message ?: "Wystąpił błąd podczas pobierania postępów", isLoading = false)
+                        it.copy(error = result.message, isLoading = false)
                     }
                 }
                 is ApiResult.Unauthorized -> {

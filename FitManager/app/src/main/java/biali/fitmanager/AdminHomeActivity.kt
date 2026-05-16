@@ -52,6 +52,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import androidx.core.content.FileProvider
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
@@ -106,7 +109,39 @@ class AdminHomeActivity : ComponentActivity() {
                         onMembershipTypeSave = viewModel::saveMembershipTypeForm,
                         onMembershipTypeClear = viewModel::clearMembershipTypeForm,
                         onEditMembershipType = viewModel::fillMembershipTypeForm,
-                        onDeleteMembershipType = viewModel::deleteMembershipType
+                        onDeleteMembershipType = viewModel::deleteMembershipType,
+                        onGenerateReport = {
+                            val repo = biali.fitmanager.network.FitManagerRepository()
+                            this@AdminHomeActivity.lifecycleScope.launch {
+                                when (val res = repo.downloadUsersReportPdf()) {
+                                    is biali.fitmanager.network.ApiResult.Success -> {
+                                        val body = res.data
+                                        try {
+                                            val cacheFile = java.io.File(this@AdminHomeActivity.cacheDir, "users-report.pdf")
+                                            body.byteStream().use { input ->
+                                                cacheFile.outputStream().use { output ->
+                                                    input.copyTo(output)
+                                                }
+                                            }
+
+                                            val uri = androidx.core.content.FileProvider.getUriForFile(this@AdminHomeActivity, this@AdminHomeActivity.applicationContext.packageName + ".provider", cacheFile)
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                                            intent.setDataAndType(uri, "application/pdf")
+                                            intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            this@AdminHomeActivity.startActivity(intent)
+                                        } catch (ex: Exception) {
+                                            android.widget.Toast.makeText(this@AdminHomeActivity, "Błąd zapisu/pliku: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                    is biali.fitmanager.network.ApiResult.Unauthorized -> {
+                                        android.widget.Toast.makeText(this@AdminHomeActivity, "Brak uprawnień.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    is biali.fitmanager.network.ApiResult.Error -> {
+                                        android.widget.Toast.makeText(this@AdminHomeActivity, res.message, android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -165,6 +200,7 @@ private fun AdminDashboardScreen(
     onClear: () -> Unit,
     onEditUser: (biali.fitmanager.network.UserResponse) -> Unit,
     onDeleteUser: (biali.fitmanager.network.UserResponse) -> Unit,
+    onGenerateReport: () -> Unit,
     onTrainerIdChange: (String) -> Unit,
     onClientIdChange: (String) -> Unit,
     onLoadTrainerClients: () -> Unit,
@@ -229,6 +265,8 @@ private fun AdminDashboardScreen(
             onClear = onClear
         )
 
+        AdminReportSection(onGenerateReport = onGenerateReport)
+
         AdminTrainersSection(
             trainers = state.trainers,
             onEditUser = onEditUser,
@@ -275,8 +313,8 @@ private fun AdminBottomNav() {
         NavigationBarItem(
             selected = false,
             onClick = { },
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
+            label = { Text("Raporty") },
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Raporty") }
         )
         NavigationBarItem(
             selected = false,
@@ -329,6 +367,22 @@ private fun AdminTrainersSection(
             Text("Trenerzy", fontWeight = FontWeight.Bold)
             trainers.forEach { trainer ->
                 UserRow(user = trainer, onEdit = { onEditUser(trainer) }, onDelete = { onDeleteUser(trainer) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminReportSection(onGenerateReport: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("Raporty", fontWeight = FontWeight.Bold)
+                Button(onClick = onGenerateReport, colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)) {
+                    Icon(Icons.Filled.Person, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                    Text("Generuj raport")
+                }
             }
         }
     }

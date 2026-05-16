@@ -47,9 +47,8 @@ data class AdminDashboardUiState(
     val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState()
 )
 
-class AdminDashboardViewModel(
-    private val repository: FitManagerRepository = FitManagerRepository()
-) : ViewModel() {
+class AdminDashboardViewModel : ViewModel() {
+    private val repository = FitManagerRepository()
     private val _state = MutableStateFlow(AdminDashboardUiState())
     val state = _state.asStateFlow()
 

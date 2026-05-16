@@ -33,13 +33,16 @@ public class AdminController {
     private final AppUserRepository appUserRepository;
     private final TrainerClientRepository trainerClientRepository;
     private final PasswordEncoder passwordEncoder;
+    private final biali.fitmanager.backend.service.PdfReportService pdfReportService;
 
     public AdminController(AppUserRepository appUserRepository,
                            TrainerClientRepository trainerClientRepository,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder,
+                           biali.fitmanager.backend.service.PdfReportService pdfReportService) {
         this.appUserRepository = appUserRepository;
         this.trainerClientRepository = trainerClientRepository;
         this.passwordEncoder = passwordEncoder;
+        this.pdfReportService = pdfReportService;
     }
 
     @GetMapping("/users")
@@ -149,6 +152,16 @@ public class AdminController {
                 .toList();
 
         return ResponseEntity.ok(clients);
+    }
+
+    @GetMapping(value = "/reports/users/pdf", produces = "application/pdf")
+    public ResponseEntity<byte[]> usersReport(org.springframework.security.core.Authentication authentication) {
+        String generatedBy = authentication == null ? null : authentication.getName();
+        byte[] pdf = pdfReportService.generateUsersReport(generatedBy);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment().filename("users-report.pdf").build());
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 
     @PostMapping("/trainers/{trainerId}/clients/{clientId}")

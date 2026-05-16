@@ -9,6 +9,14 @@ data class LoginResponse(
     val token: String
 )
 
+data class RegisterRequest(
+    val email: String,
+    val password: String,
+    val firstName: String,
+    val lastName: String,
+    val phoneNumber: String? = null
+)
+
 data class ErrorResponse(
     val message: String
 )

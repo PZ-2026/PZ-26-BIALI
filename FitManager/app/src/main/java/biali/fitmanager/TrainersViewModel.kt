@@ -24,9 +24,8 @@ data class TrainersUiState(
     val currentTrainerEndDate: String? = null
 )
 
-class TrainersViewModel(
-    private val repository: FitManagerRepository = FitManagerRepository()
-) : ViewModel() {
+class TrainersViewModel : ViewModel() {
+    private val repository = FitManagerRepository()
 
     private val _state = MutableStateFlow(TrainersUiState())
     val state: StateFlow<TrainersUiState> = _state.asStateFlow()

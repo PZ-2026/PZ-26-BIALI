@@ -51,7 +51,8 @@ class MainActivity : AppCompatActivity() {
 
         // Obsługa kliknięcia "Zarejestruj się"
         btnRegister.setOnClickListener {
-            Toast.makeText(this, "Funkcja rejestracji będzie dostępna wkrótce!", Toast.LENGTH_SHORT).show()
+            val intent = android.content.Intent(this, biali.fitmanager.RegisterActivity::class.java)
+            startActivity(intent)
         }
 
         // Obsługa przełącznika widoczności hasła
