@@ -24,9 +24,11 @@ import biali.fitmanager.backend.dto.TopUpRequest;
 import biali.fitmanager.backend.model.AppUser;
 import biali.fitmanager.backend.model.Membership;
 import biali.fitmanager.backend.model.MembershipType;
+import biali.fitmanager.backend.model.Payment;
 import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.MembershipRepository;
 import biali.fitmanager.backend.repository.MembershipTypeRepository;
+import biali.fitmanager.backend.repository.PaymentRepository;
 
 @RestController
 @RequestMapping("/api/users")
@@ -36,15 +38,18 @@ public class UserController {
     private final PasswordEncoder passwordEncoder;
     private final MembershipTypeRepository membershipTypeRepository;
     private final MembershipRepository membershipRepository;
+    private final PaymentRepository paymentRepository;
 
     public UserController(AppUserRepository appUserRepository,
                           PasswordEncoder passwordEncoder,
                           MembershipTypeRepository membershipTypeRepository,
-                          MembershipRepository membershipRepository) {
+                          MembershipRepository membershipRepository,
+                          PaymentRepository paymentRepository) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.membershipTypeRepository = membershipTypeRepository;
         this.membershipRepository = membershipRepository;
+        this.paymentRepository = paymentRepository;
     }
 
     @GetMapping
@@ -151,6 +156,13 @@ public class UserController {
         membership.setEndDate(start.plusDays(mt.getDurationDays()));
         membership.setStatus("ACTIVE");
         Membership saved = membershipRepository.save(membership);
+
+        Payment payment = new Payment();
+        payment.setUserId(user.getId());
+        payment.setMembershipId(saved.getId());
+        payment.setAmount(price);
+        payment.setStatus("SUCCESS");
+        paymentRepository.save(payment);
 
         return ResponseEntity.ok(saved);
     }

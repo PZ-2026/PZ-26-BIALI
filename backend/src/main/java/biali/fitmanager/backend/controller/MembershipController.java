@@ -17,6 +17,8 @@ import java.time.LocalDate;
 import biali.fitmanager.backend.model.Membership;
 import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.MembershipRepository;
+import biali.fitmanager.backend.model.Payment;
+import biali.fitmanager.backend.repository.PaymentRepository;
 import org.springframework.transaction.annotation.Transactional;
 
 @RestController
@@ -27,11 +29,13 @@ public class MembershipController {
     private final MembershipRepository membershipRepository;
     private final AppUserRepository appUserRepository;
     private final MembershipTypeRepository membershipTypeRepository;
+    private final PaymentRepository paymentRepository;
 
-    public MembershipController(MembershipRepository membershipRepository, AppUserRepository appUserRepository, MembershipTypeRepository membershipTypeRepository) {
+    public MembershipController(MembershipRepository membershipRepository, AppUserRepository appUserRepository, MembershipTypeRepository membershipTypeRepository, PaymentRepository paymentRepository) {
         this.membershipRepository = membershipRepository;
         this.appUserRepository = appUserRepository;
         this.membershipTypeRepository = membershipTypeRepository;
+        this.paymentRepository = paymentRepository;
     }
 
     // 1. Pobieranie wszystkich karnetów (opcjonalnie filtrowanie po userId)
@@ -79,6 +83,16 @@ public class MembershipController {
         fillMembership(membership, request);
         
         Membership saved = membershipRepository.save(membership);
+        // Record payment for the purchased membership and link membership_id
+        Payment payment = new Payment();
+        payment.setUserId(request.getUserId());
+        payment.setMembershipId(saved.getId());
+        BigDecimal price = request.getMembershipType().getPrice() == null
+            ? BigDecimal.ZERO
+            : request.getMembershipType().getPrice();
+        payment.setAmount(price);
+        payment.setStatus("SUCCESS");
+        paymentRepository.save(payment);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
@@ -154,6 +168,14 @@ public class MembershipController {
         membership.setStatus("ACTIVE");
 
         Membership saved = membershipRepository.save(membership);
+
+        Payment payment = new Payment();
+        payment.setUserId(user.getId());
+        payment.setMembershipId(saved.getId());
+        payment.setAmount(price);
+        payment.setStatus("SUCCESS");
+        paymentRepository.save(payment);
+
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 

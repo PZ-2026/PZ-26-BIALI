@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +32,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class HomeActivity : ComponentActivity() {
     private val repository = FitManagerRepository()
@@ -40,6 +44,11 @@ class HomeActivity : ComponentActivity() {
     private var isMembershipLoading by mutableStateOf(true)
     private var balance by mutableStateOf<Double?>(null)
     private var membershipTypes by mutableStateOf<List<MembershipTypeResponse>>(emptyList())
+    private var trainerName by mutableStateOf<String?>(null)
+    private var trainerStartDate by mutableStateOf<String?>(null)
+    private var trainerEndDate by mutableStateOf<String?>(null)
+    private var currentTrainerId by mutableStateOf<Int?>(null)
+    private var isTrainerLoading by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +66,7 @@ class HomeActivity : ComponentActivity() {
         fetchMembership()
         fetchBalance()
         fetchMembershipTypes()
+        fetchTrainerStatus()
 
         setContent {
             GymManagerTheme {
@@ -79,7 +89,14 @@ class HomeActivity : ComponentActivity() {
                         membership = membership,
                         isMembershipLoading = isMembershipLoading,
                         membershipTypes = membershipTypes,
-                        onBuyMembership = ::navigateToMemberships
+                        onBuyMembership = ::navigateToMemberships,
+                        trainerName = trainerName,
+                        trainerStartDate = trainerStartDate,
+                        trainerEndDate = trainerEndDate,
+                        isTrainerLoading = isTrainerLoading,
+                        onTrainerClick = {
+                            currentTrainerId?.let { navigateToTrainerDetails(it) }
+                        }
                     )
                 }
             }
@@ -91,6 +108,7 @@ class HomeActivity : ComponentActivity() {
         // refresh critical user data when returning to Home
         fetchBalance()
         fetchMembership()
+        fetchTrainerStatus()
     }
 
     private fun fetchBalance() {
@@ -164,6 +182,53 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    private fun fetchTrainerStatus() {
+        lifecycleScope.launch {
+            isTrainerLoading = true
+            when (val meResult = repository.getMe()) {
+                is ApiResult.Success -> {
+                    val activeTrainerId = meResult.data.trainerId
+                    val rawEndDate = meResult.data.trainerEndDate
+                    currentTrainerId = activeTrainerId
+
+                    if (activeTrainerId == null) {
+                        currentTrainerId = null
+                        trainerName = null
+                        trainerStartDate = null
+                        trainerEndDate = null
+                    } else {
+                        trainerEndDate = rawEndDate?.let(::formatIsoDateForDisplay)
+                        trainerStartDate = rawEndDate?.let(::calculateTrainerStartDate)
+
+                        when (val trainerResult = repository.getTrainerById(activeTrainerId)) {
+                            is ApiResult.Success -> {
+                                trainerName = "${trainerResult.data.firstName} ${trainerResult.data.lastName}".trim()
+                            }
+                            is ApiResult.Unauthorized -> {
+                                logout()
+                                return@launch
+                            }
+                            is ApiResult.Error -> {
+                                trainerName = "Twój trener"
+                            }
+                        }
+                    }
+                }
+                is ApiResult.Unauthorized -> {
+                    logout()
+                    return@launch
+                }
+                is ApiResult.Error -> {
+                    currentTrainerId = null
+                    trainerName = null
+                    trainerStartDate = null
+                    trainerEndDate = null
+                }
+            }
+            isTrainerLoading = false
+        }
+    }
+
     private fun logout() {
         SessionManager.clearSession()
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -180,6 +245,13 @@ class HomeActivity : ComponentActivity() {
 
     private fun navigateToTrainers() {
         val intent = Intent(this, TrainersActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun navigateToTrainerDetails(trainerId: Int) {
+        val intent = Intent(this, TrainersActivity::class.java).apply {
+            putExtra("OPEN_TRAINER_ID", trainerId)
+        }
         startActivity(intent)
     }
 
@@ -206,6 +278,24 @@ private fun displayNameFromEmail(email: String?): String {
     return tokens.joinToString(" ") { token ->
         token.lowercase().replaceFirstChar { char -> char.uppercase() }
     }
+}
+
+private fun formatIsoDateForDisplay(rawDate: String): String {
+    val input = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val output = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    val parsed = runCatching { input.parse(rawDate) }.getOrNull() ?: return rawDate
+    return output.format(parsed)
+}
+
+private fun calculateTrainerStartDate(rawEndDate: String): String {
+    val input = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val output = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    val parsedEndDate = runCatching { input.parse(rawEndDate) }.getOrNull() ?: return "-"
+    val calendar = Calendar.getInstance().apply {
+        time = parsedEndDate
+        add(Calendar.DAY_OF_YEAR, -TRAINER_RENTAL_DURATION_DAYS)
+    }
+    return output.format(calendar.time)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -246,7 +336,12 @@ fun MainContent(
     membership: MembershipResponse?, 
     isMembershipLoading: Boolean,
     membershipTypes: List<MembershipTypeResponse>,
-    onBuyMembership: () -> Unit
+    onBuyMembership: () -> Unit,
+    trainerName: String?,
+    trainerStartDate: String?,
+    trainerEndDate: String?,
+    isTrainerLoading: Boolean,
+    onTrainerClick: () -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -265,6 +360,14 @@ fun MainContent(
             isMembershipLoading = isMembershipLoading,
             membershipTypes = membershipTypes,
             onBuyMembership = onBuyMembership
+        )
+
+        TrainerSection(
+            trainerName = trainerName,
+            trainerStartDate = trainerStartDate,
+            trainerEndDate = trainerEndDate,
+            isTrainerLoading = isTrainerLoading,
+            onClick = onTrainerClick
         )
 
         Text(text = "Twoje ostatnie treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
@@ -399,6 +502,79 @@ fun MembershipSection(
     }
 }
 
+@Composable
+fun TrainerSection(
+    trainerName: String?,
+    trainerStartDate: String?,
+    trainerEndDate: String?,
+    isTrainerLoading: Boolean,
+    onClick: () -> Unit
+) {
+    val hasTrainer = !trainerName.isNullOrBlank()
+
+    val backgroundColor = when {
+        isTrainerLoading -> Color.LightGray.copy(alpha = 0.4f)
+        hasTrainer -> Color(0xFF4CAF50)
+        else -> Color(0xFFF44336)
+    }
+
+    val textColor = if (isTrainerLoading) Color.Black else Color.White
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (hasTrainer) Modifier.clickable(onClick = onClick) else Modifier),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (isTrainerLoading) {
+                Text(
+                    text = "Sprawdzam trenera...",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = textColor,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                CircularProgressIndicator()
+            } else if (hasTrainer) {
+                Text(
+                    text = "Twój trener personalny",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Text(
+                    text = "Trener: $trainerName",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = textColor
+                )
+
+                Text(
+                    text = "Od: ${trainerStartDate ?: "-"}",
+                    fontSize = 16.sp,
+                    color = textColor
+                )
+
+                Text(
+                    text = "Do: ${trainerEndDate ?: "-"}",
+                    fontSize = 16.sp,
+                    color = textColor
+                )
+            } else {
+                Text(
+                    text = "Brak trenera personalnego",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+            }
+        }
+    }
+}
+
 // Wyodrębniłem tabelę do osobnej funkcji, żeby nie powtarzać kodu (DRY)
 @Composable
 fun TrainingTable(date: String) {
@@ -456,7 +632,12 @@ fun MainContentPreview() {
             membership = null, 
             isMembershipLoading = false,
             membershipTypes = emptyList(),
-            onBuyMembership = {}
+            onBuyMembership = {},
+            trainerName = null,
+            trainerStartDate = null,
+            trainerEndDate = null,
+            isTrainerLoading = false,
+            onTrainerClick = {}
         )
     }
 }

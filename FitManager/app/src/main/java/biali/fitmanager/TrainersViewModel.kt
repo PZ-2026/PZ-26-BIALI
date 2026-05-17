@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import biali.fitmanager.network.SessionManager
 
 data class TrainersUiState(
     val trainers: List<UserResponse> = emptyList(),
@@ -102,6 +103,7 @@ class TrainersViewModel : ViewModel() {
             
             when (val result = repository.chooseTrainer(trainerId)) {
                 is ApiResult.Success -> {
+                    syncBalanceAfterTrainerPurchase()
                     _state.update { it.copy(actionSuccess = "Pomyślnie wybrano trenera!", isLoading = false) }
                     // refresh data to get trainer end date and current trainer info
                     fetchTrainers()
@@ -112,6 +114,18 @@ class TrainersViewModel : ViewModel() {
                 is ApiResult.Unauthorized -> {
                     _state.update { it.copy(sessionExpired = true, isLoading = false) }
                 }
+            }
+        }
+    }
+
+    private suspend fun syncBalanceAfterTrainerPurchase() {
+        when (val meResult = repository.getMe()) {
+            is ApiResult.Success -> {
+                meResult.data.balance?.let { SessionManager.saveBalance(it) }
+                    ?: SessionManager.changeBalanceBy(-TRAINER_RENTAL_PRICE)
+            }
+            else -> {
+                SessionManager.changeBalanceBy(-TRAINER_RENTAL_PRICE)
             }
         }
     }

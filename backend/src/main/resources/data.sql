@@ -13,10 +13,10 @@ INSERT INTO membership_types (code, name, price, duration_days, description) VAL
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number, account_balance) VALUES
 ('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Slowik', '123456789', 0.00),
 ('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321', 0.00),
+('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00),
 ('trener2@fitmanager.pl', 'hashed_pwd_trainer2', 'TRAINER', 'Marek', 'Zieliński', '600111222', 0.00),
 ('trener3@fitmanager.pl', 'hashed_pwd_trainer3', 'TRAINER', 'Agnieszka', 'Lewandowska', '600333444', 0.00),
-('trener4@fitmanager.pl', 'hashed_pwd_trainer4', 'TRAINER', 'Piotr', 'Nowicki', '600555666', 0.00),
-('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00);
+('trener4@fitmanager.pl', 'hashed_pwd_trainer4', 'TRAINER', 'Piotr', 'Nowicki', '600555666', 0.00);
 
 -----------------------------------------------------------
 -- 3. RELATION
