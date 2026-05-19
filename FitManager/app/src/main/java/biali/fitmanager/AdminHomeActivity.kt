@@ -1,11 +1,13 @@
 package biali.fitmanager
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,15 +18,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,14 +51,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -194,16 +208,29 @@ private fun AdminTopBar(onLogout: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = Green80,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("FitManager", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
         },
         actions = {
             TextButton(onClick = onLogout) {
-                Icon(Icons.Filled.ExitToApp, contentDescription = null)
+                Icon(Icons.Filled.ExitToApp, contentDescription = null, tint = Color(0xFF666666))
                 Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Wyloguj")
+                Text("Wyloguj", color = Color(0xFF666666))
             }
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF1B5E20)
+        )
     )
 }
 
@@ -239,40 +266,125 @@ private fun AdminDashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Mój panel", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(text = "Panel administratora", fontSize = 16.sp)
+        // Dashboard header
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Green80),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = "Panel administratora",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Zarządzaj siłownią — użytkownicy, karnety, statystyki",
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+            }
+        }
 
-        // Charts Section - NEW
+        // Gym Info Card
+        GymInfoCard()
+
+        // Charts Section
         biali.fitmanager.ui.charts.ChartsSection(
             chartData = state.chartData,
             isLoading = state.isChartLoading
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .background(color = Color.LightGray)
-                .padding(16.dp)
+        // Quick actions
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(12.dp)
         ) {
-            Text(text = "Zarządzanie użytkownikami", modifier = Modifier.align(Alignment.Center))
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onRefresh,
-                colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Odśwież")
+                Text(
+                    text = "Szybkie akcje",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1B5E20)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onRefresh,
+                        colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Odśwież dane", fontSize = 13.sp)
+                    }
+                }
             }
         }
 
-        state.message?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
-        state.error?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
+        state.message?.let {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = LightGreen80),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF2E7D32)
+                )
+            }
+        }
+        state.error?.let {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFC62828)
+                )
+            }
+        }
         if (state.isLoading) {
-            Text(text = "Ładowanie danych...")
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Green80
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ładowanie danych...", color = Color(0xFF666666))
+                }
+            }
         }
 
         AdminUsersSection(
@@ -314,6 +426,147 @@ private fun AdminDashboardScreen(
             onAssignClient = onAssignClient,
             onUnassignClient = onUnassignClient
         )
+
+        // Footer
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "FitManager v1.0 © 2025",
+            fontSize = 12.sp,
+            color = Color(0xFF999999),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun GymInfoCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = Green80,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "O siłowni",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1B5E20)
+                )
+            }
+
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+
+            InfoRow(
+                icon = Icons.Filled.LocationOn,
+                label = "Adres",
+                value = "ul. Sportowa 42, 00-001 Warszawa"
+            )
+            InfoRow(
+                icon = Icons.Filled.Call,
+                label = "Telefon",
+                value = "+48 123 456 789"
+            )
+            InfoRow(
+                icon = Icons.Filled.Email,
+                label = "E-mail",
+                value = "kontakt@biali-fitmanager.pl"
+            )
+            InfoRow(
+                icon = Icons.Filled.DateRange,
+                label = "Godziny otwarcia",
+                value = "Pon-Pt: 06:00-23:00\nSob-Nd: 08:00-20:00"
+            )
+
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+
+            // Clickable map link
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF5F5F5))
+                    .clickable {
+                        openMap(context)
+                    }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = Green80,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Zobacz na mapie",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Green80
+                )
+            }
+        }
+    }
+}
+
+private fun openMap(context: android.content.Context) {
+    val gmmIntentUri = Uri.parse("geo:0,0?q=Siłownia+FitManager+Warszawa")
+    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
+        setPackage("com.google.android.apps.maps")
+    }
+    try {
+        context.startActivity(mapIntent)
+    } catch (_: Exception) {
+        val webIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://maps.google.com/?q=Siłownia+Warszawa")
+        )
+        context.startActivity(webIntent)
+    }
+}
+
+@Composable
+private fun InfoRow(icon: ImageVector, label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = Color(0xFF666666),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = Color(0xFF999999)
+            )
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                color = Color(0xFF333333)
+            )
+        }
     }
 }
 
@@ -362,17 +615,42 @@ private fun AdminUsersSection(
     onEditUser: (biali.fitmanager.network.UserResponse) -> Unit,
     onDeleteUser: (biali.fitmanager.network.UserResponse) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Użytkownicy", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Użytkownicy", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1B5E20))
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("ALL", "CLIENT", "TRAINER", "ADMIN").forEach { role ->
-                    OutlinedButton(onClick = { onUserFilterChange(role) }) {
-                        Text(role)
+                    val isSelected = state.selectedUserRoleFilter == role
+                    if (isSelected) {
+                        Button(
+                            onClick = { onUserFilterChange(role) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = ButtonDefaults.TextButtonContentPadding
+                        ) {
+                            Text(role, fontSize = 12.sp)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { onUserFilterChange(role) },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = ButtonDefaults.TextButtonContentPadding
+                        ) {
+                            Text(role, fontSize = 12.sp)
+                        }
                     }
                 }
             }
-            HorizontalDivider()
+            HorizontalDivider(color = Color(0xFFE0E0E0))
             state.users.forEach { user ->
                 UserRow(user = user, onEdit = { onEditUser(user) }, onDelete = { onDeleteUser(user) })
             }
@@ -386,9 +664,19 @@ private fun AdminTrainersSection(
     onEditUser: (biali.fitmanager.network.UserResponse) -> Unit,
     onDeleteUser: (biali.fitmanager.network.UserResponse) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Trenerzy", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Trenerzy", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1B5E20))
+            }
+            HorizontalDivider(color = Color(0xFFE0E0E0))
             trainers.forEach { trainer ->
                 UserRow(user = trainer, onEdit = { onEditUser(trainer) }, onDelete = { onDeleteUser(trainer) })
             }
@@ -398,15 +686,28 @@ private fun AdminTrainersSection(
 
 @Composable
 private fun AdminReportSection(onGenerateReport: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Raporty", fontWeight = FontWeight.Bold)
-                Button(onClick = onGenerateReport, colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)) {
-                    Icon(Icons.Filled.Person, contentDescription = null)
-                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                    Text("Generuj raport")
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Raporty", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1B5E20))
+            }
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+            Button(
+                onClick = onGenerateReport,
+                colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Generuj raport PDF")
             }
         }
     }
@@ -419,22 +720,61 @@ private fun UserRow(
     onDelete: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("#${user.id} • ${user.firstName} ${user.lastName} • ${user.role}")
-        Text(user.email)
-        Text(user.phoneNumber ?: "Brak telefonu")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onEdit) {
-                Icon(Icons.Filled.Edit, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Edytuj")
-            }
-            OutlinedButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Usuń")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        when (user.role.uppercase()) {
+                            "ADMIN" -> Color(0xFFE53935)
+                            "TRAINER" -> Color(0xFFFB8C00)
+                            else -> Green80
+                        }
+                    )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    "#${user.id} • ${user.firstName} ${user.lastName}",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    user.role,
+                    fontSize = 11.sp,
+                    color = when (user.role.uppercase()) {
+                        "ADMIN" -> Color(0xFFE53935)
+                        "TRAINER" -> Color(0xFFFB8C00)
+                        else -> Green80
+                    }
+                )
             }
         }
-        HorizontalDivider()
+        Text(user.email, fontSize = 13.sp, color = Color(0xFF666666))
+        Text(user.phoneNumber ?: "Brak telefonu", fontSize = 12.sp, color = Color(0xFF999999))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onEdit,
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = ButtonDefaults.TextButtonContentPadding
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Edytuj", fontSize = 12.sp)
+            }
+            OutlinedButton(
+                onClick = onDelete,
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = ButtonDefaults.TextButtonContentPadding,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Usuń", fontSize = 12.sp)
+            }
+        }
+        HorizontalDivider(color = Color(0xFFF0F0F0))
     }
 }
 
@@ -445,55 +785,91 @@ private fun AdminUserFormSection(
     onSave: () -> Unit,
     onClear: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (state.form.id.isBlank()) "Dodaj / edytuj konto" else "Edycja konta #${state.form.id}", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    if (state.form.id.isBlank()) "Dodaj / edytuj konto" else "Edycja konta #${state.form.id}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color(0xFF1B5E20)
+                )
+            }
+            HorizontalDivider(color = Color(0xFFE0E0E0))
 
             OutlinedTextField(
                 value = state.form.email,
                 onValueChange = { value -> onUserFieldChange { it.copy(email = value) } },
                 label = { Text("Email") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.password,
                 onValueChange = { value -> onUserFieldChange { it.copy(password = value) } },
                 label = { Text("Hasło (opcjonalne przy edycji)") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.role,
                 onValueChange = { value -> onUserFieldChange { it.copy(role = value.uppercase()) } },
                 label = { Text("Rola: ADMIN / TRAINER / CLIENT") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.firstName,
                 onValueChange = { value -> onUserFieldChange { it.copy(firstName = value) } },
                 label = { Text("Imię") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.lastName,
                 onValueChange = { value -> onUserFieldChange { it.copy(lastName = value) } },
                 label = { Text("Nazwisko") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.phoneNumber,
                 onValueChange = { value -> onUserFieldChange { it.copy(phoneNumber = value) } },
                 label = { Text("Telefon") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSave) { Text("Zapisz") }
+                Button(
+                    onClick = onSave,
+                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Zapisz")
+                }
                 if (state.form.id.isNotBlank()) {
-                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                    OutlinedButton(
+                        onClick = onClear,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text("Anuluj edycję")
                     }
                 } else {
-                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                    OutlinedButton(
+                        onClick = onClear,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Wyczyść")
+                    }
                 }
             }
         }
@@ -509,36 +885,77 @@ private fun AdminTrainerClientsSection(
     onAssignClient: () -> Unit,
     onUnassignClient: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Podopieczni trenera", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Person, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Podopieczni trenera", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1B5E20))
+            }
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+
             OutlinedTextField(
                 value = state.trainerIdForClients,
                 onValueChange = onTrainerIdChange,
-                label = { Text("trainerId") },
-                modifier = Modifier.fillMaxWidth()
+                label = { Text("ID trenera") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
-            Button(onClick = onLoadTrainerClients) { Text("Pobierz klientów") }
+            Button(
+                onClick = onLoadTrainerClients,
+                colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Pobierz klientów")
+            }
 
             if (state.isTrainerClientsLoading) {
-                Text("Ładowanie klientów...")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = Green80
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ładowanie klientów...", fontSize = 13.sp, color = Color(0xFF666666))
+                }
             }
 
             state.trainerClients.forEach { client ->
-                Text("#${client.id} • ${client.firstName} ${client.lastName} • ${client.email}")
+                Text(
+                    "#${client.id} • ${client.firstName} ${client.lastName} • ${client.email}",
+                    fontSize = 13.sp
+                )
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = Color(0xFFE0E0E0))
 
             OutlinedTextField(
                 value = state.clientIdForAssignment,
                 onValueChange = onClientIdChange,
-                label = { Text("clientId") },
-                modifier = Modifier.fillMaxWidth()
+                label = { Text("ID klienta") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAssignClient) { Text("Przypisz") }
-                OutlinedButton(onClick = onUnassignClient) { Text("Odepnij") }
+                Button(
+                    onClick = onAssignClient,
+                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Przypisz")
+                }
+                OutlinedButton(
+                    onClick = onUnassignClient,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Odepnij")
+                }
             }
         }
     }
@@ -553,67 +970,116 @@ private fun AdminMembershipTypesSection(
     onEditMembershipType: (biali.fitmanager.network.MembershipTypeResponse) -> Unit,
     onDeleteMembershipType: (Int) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Typy karnetów", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = Green80, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Typy karnetów", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1B5E20))
+            }
+            HorizontalDivider(color = Color(0xFFE0E0E0))
             
             state.membershipTypes.forEach { membershipType ->
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("${membershipType.name} • ${membershipType.price}zł • ${membershipType.durationDays} dni", fontWeight = FontWeight.SemiBold)
-                    if (membershipType.description != null) Text(membershipType.description, fontSize = 12.sp)
+                    Text(
+                        "${membershipType.name} • ${membershipType.price}zł • ${membershipType.durationDays} dni",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    if (membershipType.description != null) {
+                        Text(membershipType.description, fontSize = 12.sp, color = Color(0xFF666666))
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onEditMembershipType(membershipType) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = null)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                            Text("Edytuj")
+                        OutlinedButton(
+                            onClick = { onEditMembershipType(membershipType) },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = ButtonDefaults.TextButtonContentPadding
+                        ) {
+                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Edytuj", fontSize = 12.sp)
                         }
-                        OutlinedButton(onClick = { onDeleteMembershipType(membershipType.id) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                            Text("Usuń")
+                        OutlinedButton(
+                            onClick = { onDeleteMembershipType(membershipType.id) },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = ButtonDefaults.TextButtonContentPadding,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
+                        ) {
+                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Usuń", fontSize = 12.sp)
                         }
                     }
-                    HorizontalDivider()
+                    HorizontalDivider(color = Color(0xFFF0F0F0))
                 }
             }
 
-            HorizontalDivider()
-            Text(if (state.membershipTypeForm.id.isBlank()) "Dodaj / edytuj typ karnetu" else "Edycja typu #${state.membershipTypeForm.id}", fontWeight = FontWeight.Bold)
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+            Text(
+                if (state.membershipTypeForm.id.isBlank()) "Dodaj / edytuj typ karnetu" else "Edycja typu #${state.membershipTypeForm.id}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = Color(0xFF1B5E20)
+            )
 
             OutlinedTextField(
                 value = state.membershipTypeForm.name,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(name = value) } },
                 label = { Text("Nazwa") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.price,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(price = value) } },
                 label = { Text("Cena") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.durationDays,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(durationDays = value) } },
                 label = { Text("Liczba dni") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.description,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(description = value) } },
                 label = { Text("Opis (opcjonalnie)") },
                 modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
+                maxLines = 3,
+                shape = RoundedCornerShape(8.dp)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSave) { Text("Zapisz") }
+                Button(
+                    onClick = onSave,
+                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Zapisz")
+                }
                 if (state.membershipTypeForm.id.isNotBlank()) {
-                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                    OutlinedButton(
+                        onClick = onClear,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text("Anuluj edycję")
                     }
                 } else {
-                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                    OutlinedButton(
+                        onClick = onClear,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Wyczyść")
+                    }
                 }
             }
         }
