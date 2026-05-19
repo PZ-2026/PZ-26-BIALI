@@ -2,15 +2,13 @@
 
 ## Nazwa grupy: BIALI
 
-
-
 Skład grupy: <br>
+
 - Kacper Kowalski (L)
 - Jakub Kwaśniak
-- Olaf Słowik 
+- Olaf Słowik
 - Piotr Gajda
 
+## Uruchomienie testów jednostkowych JUnit dla backendu
 
-
-
-
+.\gradlew.bat clean test

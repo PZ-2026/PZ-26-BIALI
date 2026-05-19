@@ -20,8 +20,13 @@ import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.TopUpRequest
 import biali.fitmanager.network.ApiResult
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import biali.fitmanager.ui.theme.GymManagerTheme
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 class WalletActivity : ComponentActivity() {
@@ -84,8 +89,38 @@ fun WalletContent(modifier: Modifier = Modifier) {
         }
     } else {
         Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(text = "Aktualne saldo:", fontSize = 18.sp)
-        Text(text = String.format(java.util.Locale.getDefault(), "%.2f zł", balance), fontSize = 28.sp)
+            Text(text = "BLIK", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Aktualne saldo: ${"%.2f".format(balance)} zł",
+                fontSize = 18.sp
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val amounts = listOf(10, 20, 50, 100, 200)
+
+                amounts.forEach { a ->
+                    Button(
+                        onClick = {
+                            amountText = String.format(
+                                java.util.Locale.getDefault(),
+                                "%.2f",
+                                a.toDouble()
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Black,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(text = "${a} zł")
+                    }
+                }
+            }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = amountText,

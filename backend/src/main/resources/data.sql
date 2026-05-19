@@ -18,6 +18,7 @@ INSERT INTO users (email, password_hash, role, first_name, last_name, phone_numb
 ('trener4@fitmanager.pl', '$2b$10$5YKBYUW/24lWJU5lLeUjTuCE0mFNxHmArE9i6h4LgS028.BJ8doi2', 'TRAINER', 'Piotr', 'Nowicki', '600555666', 0.00),
 ('klient@fitmanager.pl', '$2b$10$2Vu16Vf7sDXwbKkcXf57T.7jpcVZpTXf8gS.9OC3EONcQx.IEGoKu', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00);
 
+
 -----------------------------------------------------------
 -- 3. RELATION
 -----------------------------------------------------------
@@ -49,8 +50,6 @@ VALUES (
 -----------------------------------------------------------
 -- 6. TRAINING SESSION
 -----------------------------------------------------------
--- Zmieniono na INTERVAL '1 hour' oraz '2 hours'. 
--- Jeśli trening ma być za kilka dni, zmień na '1 day' / '2 days'.
 INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_participants)
 VALUES (
     2,

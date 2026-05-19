@@ -24,10 +24,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.UserResponse
+import biali.fitmanager.network.MembershipTypeResponse
+import kotlinx.coroutines.launch
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
 import androidx.compose.runtime.Composable
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 
 class TrainersActivity : ComponentActivity() {
@@ -37,18 +40,36 @@ class TrainersActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val viewModel = ViewModelProvider(this)[TrainersViewModel::class.java]
+        val openTrainerId = intent.getIntExtra("OPEN_TRAINER_ID", -1).takeIf { it > 0 }
 
         setContent {
             GymManagerTheme {
                 val state by viewModel.state.collectAsState()
+                var selectedTrainerForPurchase by remember { mutableStateOf<UserResponse?>(null) }
+                var trainerIdToResign by remember { mutableStateOf<Int?>(null) }
+                var trainerEndDateForResign by remember { mutableStateOf<String?>(null) }
+                val snackbarHostState = remember { SnackbarHostState() }
+                val coroutineScope = rememberCoroutineScope()
 
                 LaunchedEffect(Unit) {
                     viewModel.fetchTrainers()
+                    openTrainerId?.let { viewModel.selectTrainer(it) }
                 }
 
                 LaunchedEffect(state.sessionExpired) {
                     if (state.sessionExpired) {
                         logout()
+                    }
+                }
+
+                // Navigate to Home when trainer purchase succeeds
+                LaunchedEffect(state.actionSuccess) {
+                    if (state.actionSuccess == "Pomyślnie wybrano trenera!") {
+                        val intent = Intent(this@TrainersActivity, HomeActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        }
+                        startActivity(intent)
+                        finish()
                     }
                 }
 
@@ -61,6 +82,7 @@ class TrainersActivity : ComponentActivity() {
                             onClose = { finish() }
                         )
                     },
+                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     bottomBar = {
                         if (!state.showDetails) {
                             FitBottomNav(
@@ -88,9 +110,13 @@ class TrainersActivity : ComponentActivity() {
                             isLoading = state.isLoading,
                             error = state.error,
                             successMessage = state.actionSuccess,
-                            onPickTrainer = { viewModel.pickTrainer(it) },
-                            onResignTrainer = { viewModel.resignTrainer(it) },
-                            currentTrainerId = state.currentTrainerId
+                            onPickTrainer = { selectedTrainerForPurchase = it },
+                            onResignTrainer = { trainerId, endDate ->
+                                trainerIdToResign = trainerId
+                                trainerEndDateForResign = endDate
+                            },
+                            currentTrainerId = state.currentTrainerId,
+                            currentTrainerEndDate = state.currentTrainerEndDate
                         )
                     } else {
                         TrainersListContent(
@@ -98,11 +124,82 @@ class TrainersActivity : ComponentActivity() {
                             trainers = state.trainers,
                             isLoading = state.isLoading,
                             error = state.error,
-                            onTrainerClick = { viewModel.selectTrainer(it.id) },
+                            onTrainerClick = { trainer ->
+                                if (trainer.id == state.currentTrainerId) {
+                                    viewModel.selectTrainer(trainer.id)
+                                } else {
+                                    selectedTrainerForPurchase = trainer
+                                }
+                            },
                             onRefresh = { viewModel.fetchTrainers() },
                             currentTrainerId = state.currentTrainerId,
                             currentTrainer = state.currentTrainer,
                             currentTrainerEndDate = state.currentTrainerEndDate
+                        )
+                    }
+
+                    trainerIdToResign?.let { trainerId ->
+                        val remainingDays = trainerEndDateForResign?.let(::calculateRemainingDays) ?: 0
+                        AlertDialog(
+                            onDismissRequest = { trainerIdToResign = null; trainerEndDateForResign = null },
+                            title = { Text("Potwierdzenie") },
+                            text = { 
+                                Text(
+                                    "Czy na pewno chcesz zrezygnować z trenera?\n\n" +
+                                    "Pozostało $remainingDays dni współpracy."
+                                )
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { trainerIdToResign = null; trainerEndDateForResign = null }) {
+                                    Text("Anuluj")
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        viewModel.resignTrainer(trainerId)
+                                        trainerIdToResign = null
+                                        trainerEndDateForResign = null
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                                ) {
+                                    Text("Tak, rezygnuję", color = Color.White)
+                                }
+                            }
+                        )
+                    }
+
+                    selectedTrainerForPurchase?.let { trainer ->
+                        val purchaseType = MembershipTypeResponse(
+                            id = trainer.id,
+                            name = "Trener: ${trainer.firstName} ${trainer.lastName}",
+                            price = TRAINER_RENTAL_PRICE,
+                            durationDays = TRAINER_RENTAL_DURATION_DAYS
+                        )
+
+                        PurchaseConfirmationDialog(
+                            type = purchaseType,
+                            onDismiss = { selectedTrainerForPurchase = null },
+                            onConfirm = {
+                                // If user already has an active trainer, show message and don't proceed
+                                if (state.currentTrainerId != null) {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Masz już aktywnego trenera. Najpierw zrezygnuj.")
+                                    }
+                                    selectedTrainerForPurchase = null
+                                } else {
+                                    val balance = SessionManager.getBalance()
+                                    if (balance < TRAINER_RENTAL_PRICE) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Za mało środków")
+                                        }
+                                    } else {
+                                        // trigger purchase; navigation will happen when viewModel updates actionSuccess
+                                        viewModel.pickTrainer(trainer.id)
+                                        selectedTrainerForPurchase = null
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -244,8 +341,10 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(text = trainer.email, fontSize = 14.sp)
-                // Show trainer rental price (matches backend rental price)
-                Text(text = "Cena wynajmu: 199.99 PLN / 30 dni", fontSize = 13.sp)
+                Text(
+                    text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
+                    fontSize = 13.sp
+                )
             }
             Text("Szczegóły >", fontSize = 14.sp)
         }
@@ -259,9 +358,10 @@ fun TrainerDetailsContent(
     isLoading: Boolean,
     error: String?,
     successMessage: String?,
-    onPickTrainer: (Int) -> Unit,
-    onResignTrainer: (Int) -> Unit,
-    currentTrainerId: Int?
+    onPickTrainer: (UserResponse) -> Unit,
+    onResignTrainer: (Int, String?) -> Unit,
+    currentTrainerId: Int?,
+    currentTrainerEndDate: String?
 ) {
     Column(
         modifier = modifier
@@ -288,17 +388,10 @@ fun TrainerDetailsContent(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "O trenerze:",
-                    fontSize = 18.sp,
+                    text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    text = "Doświadczony instruktor personalny, który pomoże Ci osiągnąć Twoje cele treningowe. Specjalizuje się w treningu siłowym i redukcji tkanki tłuszczowej.",
-                    fontSize = 15.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "Cena wynajmu: 199.99 PLN / 30 dni", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -314,12 +407,24 @@ fun TrainerDetailsContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        val isCurrentTrainer = trainer.id == currentTrainerId
+
+        if (isCurrentTrainer) {
+            TrainerWorkoutPlanSection()
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         if (isLoading) {
             CircularProgressIndicator()
         } else {
-            val isCurrentTrainer = trainer.id == currentTrainerId
             Button(
-                onClick = { if (isCurrentTrainer) onResignTrainer(trainer.id) else onPickTrainer(trainer.id) },
+                onClick = { 
+                    if (isCurrentTrainer) {
+                        onResignTrainer(trainer.id, currentTrainerEndDate)
+                    } else {
+                        onPickTrainer(trainer)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isCurrentTrainer) Color.Red else Green80
@@ -331,5 +436,51 @@ fun TrainerDetailsContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun TrainerWorkoutPlanSection() {
+    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Ćwiczenie na dzień $today",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            val exercises = listOf(
+                Triple("Przysiady ze sztangą", "60 kg", "4 serie x 8 powtórzeń"),
+                Triple("Wyciskanie sztangi leżąc", "70 kg", "4 serie x 6 powtórzeń"),
+                Triple("Martwy ciąg", "100 kg", "5 serii x 5 powtórzeń"),
+                Triple("Wiosłowanie hantlą", "30 kg", "4 serie x 10 powtórzeń"),
+                Triple("Plank", "0 kg", "3 serie x 60 sekund")
+            )
+
+            exercises.forEach { (name, weight, details) ->
+                Column(modifier = Modifier.padding(bottom = 10.dp)) {
+                    Text(text = name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Ciężar: $weight", fontSize = 14.sp)
+                    Text(text = "Serie i powtórzenia: $details", fontSize = 14.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun calculateRemainingDays(isoDateString: String): Long {
+    return try {
+        val endDate = LocalDate.parse(isoDateString, DateTimeFormatter.ISO_LOCAL_DATE)
+        val today = LocalDate.now()
+        val days = ChronoUnit.DAYS.between(today, endDate)
+        maxOf(days, 0L)
+    } catch (e: Exception) {
+        0L
     }
 }
