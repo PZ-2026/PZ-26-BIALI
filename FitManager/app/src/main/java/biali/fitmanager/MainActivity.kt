@@ -143,12 +143,16 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val intent = Intent(this, targetActivity)
+        val intent = Intent(this, targetActivity).apply {
+            // Clear the back stack so user can't go back to login
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
 
         email?.let { intent.putExtra("USER_EMAIL", it) }
         intent.putExtra("USER_ROLE", role)
         startActivity(intent)
-        finish()
+        // Do NOT call finish() here - FLAG_ACTIVITY_CLEAR_TASK already destroys this activity.
+        // Calling finish() on top of CLEAR_TASK can cause the app to minimize on some devices.
     }
 
     @Suppress("UNCHECKED_CAST")

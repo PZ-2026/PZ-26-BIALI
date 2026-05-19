@@ -109,4 +109,7 @@ interface FitManagerApi {
     @Streaming
     @GET("api/admin/reports/users/pdf")
     suspend fun downloadUsersReportPdf(): Response<okhttp3.ResponseBody>
+
+    @GET("api/admin/charts/data")
+    suspend fun getChartData(): Response<ChartDataResponse>
 }

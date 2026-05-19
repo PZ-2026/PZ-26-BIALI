@@ -69,82 +69,100 @@ class AdminHomeActivity : ComponentActivity() {
             logout()
             return
         }
-        enableEdgeToEdge()
+
+        // Safe edge-to-edge: Samsung devices (e.g. SM-G781B) may crash/minimize
+        // when enableEdgeToEdge() is called. Wrap in try-catch.
+        try {
+            enableEdgeToEdge()
+        } catch (_: Exception) {
+            // Samsung-specific bug: silently ignore
+        }
+
         val viewModel = ViewModelProvider(this)[AdminDashboardViewModel::class.java]
-        setContent {
-            GymManagerTheme {
-                val state by viewModel.state.collectAsState()
 
-                LaunchedEffect(state.sessionExpired) {
-                    if (state.sessionExpired) {
-                        logout()
+        // Wrap the entire Compose content setup in a try-catch to prevent
+        // the app from minimizing if any exception occurs during rendering.
+        try {
+            setContent {
+                GymManagerTheme {
+                    val state by viewModel.state.collectAsState()
+
+                    LaunchedEffect(state.sessionExpired) {
+                        if (state.sessionExpired) {
+                            logout()
+                        }
                     }
-                }
 
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    topBar = {
-                        AdminTopBar(
-                            onLogout = ::logout
-                        )
-                    },
-                    bottomBar = { AdminBottomNav() }
-                ) { innerPadding ->
-                    AdminDashboardScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        state = state,
-                        onRefresh = viewModel::refreshAll,
-                        onUserFilterChange = viewModel::setUserFilter,
-                        onUserFieldChange = viewModel::onFormChanged,
-                        onSave = viewModel::saveForm,
-                        onClear = viewModel::clearForm,
-                        onEditUser = viewModel::fillFormFromUser,
-                        onDeleteUser = viewModel::deleteUser,
-                        onTrainerIdChange = viewModel::onTrainerIdChanged,
-                        onClientIdChange = viewModel::onClientIdChanged,
-                        onLoadTrainerClients = viewModel::loadTrainerClients,
-                        onAssignClient = viewModel::assignClient,
-                        onUnassignClient = viewModel::unassignClient,
-                        onMembershipTypeFieldChange = viewModel::onMembershipTypeFieldChange,
-                        onMembershipTypeSave = viewModel::saveMembershipTypeForm,
-                        onMembershipTypeClear = viewModel::clearMembershipTypeForm,
-                        onEditMembershipType = viewModel::fillMembershipTypeForm,
-                        onDeleteMembershipType = viewModel::deleteMembershipType,
-                        onGenerateReport = {
-                            val repo = biali.fitmanager.network.FitManagerRepository()
-                            this@AdminHomeActivity.lifecycleScope.launch {
-                                when (val res = repo.downloadUsersReportPdf()) {
-                                    is biali.fitmanager.network.ApiResult.Success -> {
-                                        val body = res.data
-                                        try {
-                                            val cacheFile = java.io.File(this@AdminHomeActivity.cacheDir, "users-report.pdf")
-                                            body.byteStream().use { input ->
-                                                cacheFile.outputStream().use { output ->
-                                                    input.copyTo(output)
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        topBar = {
+                            AdminTopBar(
+                                onLogout = ::logout
+                            )
+                        },
+                        bottomBar = { AdminBottomNav() }
+                    ) { innerPadding ->
+                        AdminDashboardScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            state = state,
+                            onRefresh = viewModel::refreshAll,
+                            onUserFilterChange = viewModel::setUserFilter,
+                            onUserFieldChange = viewModel::onFormChanged,
+                            onSave = viewModel::saveForm,
+                            onClear = viewModel::clearForm,
+                            onEditUser = viewModel::fillFormFromUser,
+                            onDeleteUser = viewModel::deleteUser,
+                            onTrainerIdChange = viewModel::onTrainerIdChanged,
+                            onClientIdChange = viewModel::onClientIdChanged,
+                            onLoadTrainerClients = viewModel::loadTrainerClients,
+                            onAssignClient = viewModel::assignClient,
+                            onUnassignClient = viewModel::unassignClient,
+                            onMembershipTypeFieldChange = viewModel::onMembershipTypeFieldChange,
+                            onMembershipTypeSave = viewModel::saveMembershipTypeForm,
+                            onMembershipTypeClear = viewModel::clearMembershipTypeForm,
+                            onEditMembershipType = viewModel::fillMembershipTypeForm,
+                            onDeleteMembershipType = viewModel::deleteMembershipType,
+                            onGenerateReport = {
+                                val repo = biali.fitmanager.network.FitManagerRepository()
+                                this@AdminHomeActivity.lifecycleScope.launch {
+                                    when (val res = repo.downloadUsersReportPdf()) {
+                                        is biali.fitmanager.network.ApiResult.Success -> {
+                                            val body = res.data
+                                            try {
+                                                val cacheFile = java.io.File(this@AdminHomeActivity.cacheDir, "users-report.pdf")
+                                                body.byteStream().use { input ->
+                                                    cacheFile.outputStream().use { output ->
+                                                        input.copyTo(output)
+                                                    }
                                                 }
-                                            }
 
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(this@AdminHomeActivity, this@AdminHomeActivity.applicationContext.packageName + ".provider", cacheFile)
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                                            intent.setDataAndType(uri, "application/pdf")
-                                            intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            this@AdminHomeActivity.startActivity(intent)
-                                        } catch (ex: Exception) {
-                                            android.widget.Toast.makeText(this@AdminHomeActivity, "Błąd zapisu/pliku: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(this@AdminHomeActivity, this@AdminHomeActivity.applicationContext.packageName + ".provider", cacheFile)
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                                                intent.setDataAndType(uri, "application/pdf")
+                                                intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                this@AdminHomeActivity.startActivity(intent)
+                                            } catch (ex: Exception) {
+                                                android.widget.Toast.makeText(this@AdminHomeActivity, "Błąd zapisu/pliku: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
+                                            }
                                         }
-                                    }
-                                    is biali.fitmanager.network.ApiResult.Unauthorized -> {
-                                        android.widget.Toast.makeText(this@AdminHomeActivity, "Brak uprawnień.", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                    is biali.fitmanager.network.ApiResult.Error -> {
-                                        android.widget.Toast.makeText(this@AdminHomeActivity, res.message, android.widget.Toast.LENGTH_SHORT).show()
+                                        is biali.fitmanager.network.ApiResult.Unauthorized -> {
+                                            android.widget.Toast.makeText(this@AdminHomeActivity, "Brak uprawnień.", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                        is biali.fitmanager.network.ApiResult.Error -> {
+                                            android.widget.Toast.makeText(this@AdminHomeActivity, res.message, android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // If anything crashes during Compose setup, show a Toast instead of minimizing
+            android.util.Log.e("AdminHomeActivity", "Error setting up admin panel", e)
+            Toast.makeText(this, "Błąd inicjalizacji panelu: ${e.message}", Toast.LENGTH_LONG).show()
+            logout()
         }
     }
 
@@ -223,6 +241,12 @@ private fun AdminDashboardScreen(
     ) {
         Text(text = "Mój panel", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(text = "Panel administratora", fontSize = 16.sp)
+
+        // Charts Section - NEW
+        biali.fitmanager.ui.charts.ChartsSection(
+            chartData = state.chartData,
+            isLoading = state.isChartLoading
+        )
 
         Box(
             modifier = Modifier
