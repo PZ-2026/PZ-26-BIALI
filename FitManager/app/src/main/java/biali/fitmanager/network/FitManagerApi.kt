@@ -9,6 +9,14 @@ import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Query
+import biali.fitmanager.ClientProgressLog
+import biali.fitmanager.ClientTrainingSession
+import biali.fitmanager.ClientExercise
+import biali.fitmanager.ClientSessionExercise
+import biali.fitmanager.AddSessionExerciseRequest
+import biali.fitmanager.ClientWorkoutDto
+import biali.fitmanager.LogWorkoutRequest
+
 
 interface FitManagerApi {
     @POST("api/auth/login")
@@ -55,6 +63,46 @@ interface FitManagerApi {
 
     @GET("api/trainer/me/clients")
     suspend fun getMyTrainerClients(): Response<List<UserResponse>>
+    
+
+    @GET("api/trainer/progress")
+    suspend fun getTrainerProgressLogs(): retrofit2.Response<List<ClientProgressLog>>
+
+    @GET("api/trainer/sessions")
+    suspend fun getTrainerSessions(): retrofit2.Response<List<ClientTrainingSession>>
+
+    @POST("api/trainer/progress")
+    suspend fun addTrainerProgressLog(@Body request: biali.fitmanager.CreateProgressRequest): Response<Void>
+
+    @POST("api/trainer/sessions")
+    suspend fun addTrainerSession(@Body request: biali.fitmanager.CreateSessionRequest): Response<Void>
+
+    @GET("api/trainer/exercises")
+    suspend fun getTrainerExercises(): Response<List<ClientExercise>>
+
+    @GET("api/trainer/sessions/exercises")
+    suspend fun getAllSessionExercises(): Response<List<ClientSessionExercise>>
+
+    @POST("api/trainer/sessions/{sessionId}/exercises")
+    suspend fun addSessionExercise(@Path("sessionId") sessionId: Int, @Body request: AddSessionExerciseRequest): Response<Void>
+
+    @DELETE("api/trainer/sessions/exercises/{id}")
+    suspend fun deleteSessionExercise(@Path("id") id: Int): Response<Void>
+
+    @GET("api/trainer/client-workouts")
+    suspend fun getTrainerClientWorkouts(): Response<List<ClientWorkoutDto>>
+
+    @GET("api/client/exercises")
+    suspend fun getClientExercises(): Response<List<ClientExercise>>
+
+    @GET("api/client/workouts")
+    suspend fun getMyWorkouts(): Response<List<ClientWorkoutDto>>
+
+    @POST("api/client/workouts")
+    suspend fun logClientWorkout(@Body request: LogWorkoutRequest): Response<Void>
+
+    @DELETE("api/client/workouts/{id}")
+    suspend fun deleteClientWorkout(@Path("id") id: Int): Response<Void>
 
     @POST("api/admin/trainers/{trainerId}/clients/{clientId}")
     suspend fun assignClientToTrainer(
