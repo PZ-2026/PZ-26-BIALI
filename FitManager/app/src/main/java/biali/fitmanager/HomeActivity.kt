@@ -96,7 +96,8 @@ class HomeActivity : ComponentActivity() {
                         isTrainerLoading = isTrainerLoading,
                         onTrainerClick = {
                             currentTrainerId?.let { navigateToTrainerDetails(it) }
-                        }
+                        },
+                        onNavigateToProgress = ::navigateToProgress
                     )
                 }
             }
@@ -341,7 +342,8 @@ fun MainContent(
     trainerStartDate: String?,
     trainerEndDate: String?,
     isTrainerLoading: Boolean,
-    onTrainerClick: () -> Unit
+    onTrainerClick: () -> Unit,
+    onNavigateToProgress: () -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -371,20 +373,15 @@ fun MainContent(
         )
 
         Text(text = "Twoje ostatnie treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-
-        // Trening 1
-        TrainingTable(date = "17.03.2026 r.")
-
-        // Trening 2
-        TrainingTable(date = "15.03.2026 r.")
+        Text(text = "Historię swoich ćwiczeń i wykresy wzrostu siły znajdziesz w zakładce Postępy (na dole).", fontSize = 14.sp, color = Color.Gray)
 
         // Przycisk na samym dole
         Button(
-            onClick = { println("Nawigacja do nowej strony...") },
+            onClick = onNavigateToProgress,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
         ) {
-            Text("Rozpocznij nowy trening", color = Color.White)
+            Text("Zobacz panel treningowy", color = Color.White)
         }
 
         // Mały odstęp na samym dole, żeby przycisk nie dotykał krawędzi ekranu
@@ -575,44 +572,6 @@ fun TrainerSection(
     }
 }
 
-// Wyodrębniłem tabelę do osobnej funkcji, żeby nie powtarzać kodu (DRY)
-@Composable
-fun TrainingTable(date: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = date,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-
-        Row(modifier = Modifier.fillMaxWidth()) {
-            TableCell(text = "Nazwa ćwiczenia", weight = 2f, isHeader = true)
-            TableCell(text = "Ciężar", weight = 1f, isHeader = true)
-            TableCell(text = "Powtórzenia", weight = 1f, isHeader = true)
-        }
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 1.dp, color = Color.LightGray)
-
-        TrainRow("Podciągania", "10kg", "7 7 7 7 7")
-        TrainRow("Martwy ciąg", "100kg", "7 8 6 9 5")
-        TrainRow("Wiosłowanie", "60kg", "8 8 6 7 5")
-        TrainRow("Dipy", "10kg", "6 6 8 8 6")
-    }
-}
-
-@Composable
-fun TrainRow(col1: String, col2: String, col3: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TableCell(text = col1, weight = 2f)
-        TableCell(text = col2, weight = 1f)
-        TableCell(text = col3, weight = 1f)
-    }
-}
-
 @Composable
 fun RowScope.TableCell(text: String, weight: Float, isHeader: Boolean = false) {
     Text(
@@ -637,7 +596,8 @@ fun MainContentPreview() {
             trainerStartDate = null,
             trainerEndDate = null,
             isTrainerLoading = false,
-            onTrainerClick = {}
+            onTrainerClick = {},
+            onNavigateToProgress = {}
         )
     }
 }

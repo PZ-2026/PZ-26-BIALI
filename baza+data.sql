@@ -81,11 +81,36 @@ CREATE TABLE training_plans (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 9. Tabela Ćwiczeń (Słownik)
+CREATE TABLE exercises (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    body_part VARCHAR(50)
+);
 
+-- 10. Tabela Ćwiczeń w Sesji Treningowej
+CREATE TABLE session_exercises (
+    id SERIAL PRIMARY KEY,
+    session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    sets INT NOT NULL,
+    reps INT NOT NULL,
+    weight DECIMAL(5, 2)
+);
+
+-- 11. Tabela Wyników Klientów (Treningi)
+CREATE TABLE client_workouts (
+    id SERIAL PRIMARY KEY,
+    client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    weight DECIMAL(5,2) NOT NULL,
+    reps INT NOT NULL,
+    workout_date DATE DEFAULT CURRENT_DATE
+);
 
 -- Dodawanie przykładowych użytkowników 
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number) VALUES
-('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Slowik', '123456789'),
+('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Słowik', '123456789'),
 ('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321'),
 ('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333');
 
@@ -116,3 +141,23 @@ INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes) VALUE
 -- Stworzenie planu treningowego dla klienta
 INSERT INTO training_plans (trainer_id, client_id, title, description) VALUES
 (2, 3, 'Plan FBW dla początkujących', '1. Przysiady 3x10\n2. Martwy ciąg 3x8\n3. Wyciskanie na ławce płaskiej 3x10');
+
+-- Dodanie słownika ćwiczeń
+INSERT INTO exercises (name, body_part) VALUES
+('Przysiad ze sztangą', 'Nogi'),
+('Wykroki z hantlami', 'Nogi'),
+('Wyciskanie nogami na suwnicy', 'Nogi'),
+('Martwy ciąg', 'Plecy'),
+('Wiosłowanie sztangą w opadzie', 'Plecy'),
+('Podciąganie na drążku', 'Plecy'),
+('Wyciskanie sztangi na ławce płaskiej', 'Klatka piersiowa'),
+('Wyciskanie hantli na ławce skośnej', 'Klatka piersiowa'),
+('Rozpiętki z hantlami', 'Klatka piersiowa'),
+('Wyciskanie żołnierskie', 'Barki'),
+('Wznosy ramion bokiem z hantlami', 'Barki'),
+('Uginanie ramion ze sztangą', 'Biceps'),
+('Uginanie ramion z hantlami', 'Biceps'),
+('Wyciskanie francuskie sztangi', 'Triceps'),
+('Prostowanie ramion na wyciągu', 'Triceps'),
+('Deska (Plank)', 'Brzuch'),
+('Spięcia brzucha (Crunches)', 'Brzuch');

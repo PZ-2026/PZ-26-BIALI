@@ -71,7 +71,11 @@ class TrainerUsersActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { TrainerNavbar(onLogout = ::logout) },
-                    bottomBar = { TrainerBottomNav() }
+                    bottomBar = { 
+                        TrainerBottomNav(
+                            onNavigateToProgress = { navigateToProgress() }
+                        ) 
+                    }
                 ) { innerPadding ->
                     TrainerUsersContent(
                         modifier = Modifier.padding(innerPadding),
@@ -90,6 +94,11 @@ class TrainerUsersActivity : ComponentActivity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun navigateToProgress() {
+        val intent = Intent(this, TrainerProgressActivity::class.java)
+        startActivity(intent)
     }
 }
 
@@ -191,7 +200,7 @@ private fun RowScope.TrainerCell(text: String, weight: Float, isHeader: Boolean 
 }
 
 @Composable
-private fun TrainerBottomNav() {
+private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -220,7 +229,7 @@ private fun TrainerBottomNav() {
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToProgress,
             label = { Text("Postęp") },
             icon = { androidx.compose.material3.Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
         )

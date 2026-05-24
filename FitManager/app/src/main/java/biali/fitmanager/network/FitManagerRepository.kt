@@ -4,6 +4,13 @@ import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response
+import biali.fitmanager.ClientProgressLog
+import biali.fitmanager.ClientTrainingSession
+import biali.fitmanager.ClientExercise
+import biali.fitmanager.ClientSessionExercise
+import biali.fitmanager.AddSessionExerciseRequest
+import biali.fitmanager.ClientWorkoutDto
+import biali.fitmanager.LogWorkoutRequest
 import java.io.IOException
 
 class FitManagerRepository(
@@ -103,6 +110,58 @@ class FitManagerRepository(
             val response = api.downloadUsersReportPdf()
             executeBodyResponse(response)
         }
+    
+    suspend fun getTrainerProgressLogs(): ApiResult<List<ClientProgressLog>> {
+        return executeBodyCall { api.getTrainerProgressLogs() }
+    }
+
+    suspend fun getTrainerSessions(): ApiResult<List<ClientTrainingSession>> {
+        return executeBodyCall { api.getTrainerSessions() }
+    }
+
+    suspend fun addTrainerProgressLog(request: biali.fitmanager.CreateProgressRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addTrainerProgressLog(request) }
+    }
+
+    suspend fun addTrainerSession(request: biali.fitmanager.CreateSessionRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addTrainerSession(request) }
+    }
+
+    suspend fun getTrainerExercises(): ApiResult<List<ClientExercise>> {
+        return executeBodyCall { api.getTrainerExercises() }
+    }
+
+    suspend fun getAllSessionExercises(): ApiResult<List<ClientSessionExercise>> {
+        return executeBodyCall { api.getAllSessionExercises() }
+    }
+
+    suspend fun addSessionExercise(sessionId: Int, request: AddSessionExerciseRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addSessionExercise(sessionId, request) }
+    }
+
+    suspend fun deleteSessionExercise(id: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteSessionExercise(id) }
+    }
+
+    suspend fun getTrainerClientWorkouts(): ApiResult<List<ClientWorkoutDto>> {
+        return executeBodyCall { api.getTrainerClientWorkouts() }
+    }
+
+    suspend fun getClientExercises(): ApiResult<List<ClientExercise>> {
+        return executeBodyCall { api.getClientExercises() }
+    }
+
+    suspend fun getMyWorkouts(): ApiResult<List<ClientWorkoutDto>> {
+        return executeBodyCall { api.getMyWorkouts() }
+    }
+
+    suspend fun logClientWorkout(request: LogWorkoutRequest): ApiResult<Unit> {
+        return executeVoidCall { api.logClientWorkout(request) }
+    }
+
+    suspend fun deleteClientWorkout(id: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteClientWorkout(id) }
+    }
 
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {

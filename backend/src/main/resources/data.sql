@@ -2,16 +2,16 @@
 -- 1. MEMBERSHIP TYPES
 -----------------------------------------------------------
 INSERT INTO membership_types (code, name, price, duration_days, description) VALUES
-('REGULAR_MONTHLY', 'Karnet miesieczny', 149.99, 30, 'Dostep do silowni przez 30 dni'),
-('STUDENT_MONTHLY', 'Karnet studencki', 99.99, 30, 'Znizka dla studentow'),
-('REGULAR_YEARLY', 'Karnet roczny', 1490.99, 365, 'Najlepsza opcja na caly rok'),
-('STUDENT_YEARLY', 'Karnet studencki roczny', 999.99, 365, 'Znizka dla studentow na caly rok');
+('REGULAR_MONTHLY', 'Karnet miesięczny', 149.99, 30, 'Dostęp do siłowni przez 30 dni'),
+('STUDENT_MONTHLY', 'Karnet studencki', 99.99, 30, 'Zniżka dla studentów'),
+('REGULAR_YEARLY', 'Karnet roczny', 1490.99, 365, 'Najlepsza opcja na cały rok'),
+('STUDENT_YEARLY', 'Karnet studencki roczny', 999.99, 365, 'Zniżka dla studentów na cały rok');
 
 -----------------------------------------------------------
 -- 2. USERS
 -----------------------------------------------------------
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number, account_balance) VALUES
-('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Slowik', '123456789', 0.00),
+('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Słowik', '123456789', 0.00),
 ('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321', 0.00),
 ('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00),
 ('trener2@fitmanager.pl', 'hashed_pwd_trainer2', 'TRAINER', 'Marek', 'Zieliński', '600111222', 0.00),
@@ -75,3 +75,25 @@ VALUES (3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych.');
 -----------------------------------------------------------
 INSERT INTO training_plans (trainer_id, client_id, title, description)
 VALUES (2, 3, 'Plan FBW', '1. Przysiady 3x10, 2. Martwy ciąg 3x8');
+
+-----------------------------------------------------------
+-- 10. EXERCISES (SŁOWNIK ĆWICZEŃ)
+-----------------------------------------------------------
+INSERT INTO exercises (name, body_part) VALUES
+('Przysiad ze sztangą', 'Nogi'),
+('Wykroki z hantlami', 'Nogi'),
+('Wyciskanie nogami na suwnicy', 'Nogi'),
+('Martwy ciąg', 'Plecy'),
+('Wiosłowanie sztangą w opadzie', 'Plecy'),
+('Podciąganie na drążku', 'Plecy'),
+('Wyciskanie sztangi na ławce płaskiej', 'Klatka piersiowa'),
+('Wyciskanie hantli na ławce skośnej', 'Klatka piersiowa'),
+('Rozpiętki z hantlami', 'Klatka piersiowa'),
+('Wyciskanie żołnierskie', 'Barki'),
+('Wznosy ramion bokiem z hantlami', 'Barki'),
+('Uginanie ramion ze sztangą', 'Biceps'),
+('Uginanie ramion z hantlami', 'Biceps'),
+('Wyciskanie francuskie sztangi', 'Triceps'),
+('Prostowanie ramion na wyciągu', 'Triceps'),
+('Deska (Plank)', 'Brzuch'),
+('Spięcia brzucha (Crunches)', 'Brzuch');
