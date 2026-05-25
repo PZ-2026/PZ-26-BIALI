@@ -107,7 +107,7 @@ CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED', 'COMPLETED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, session_id)
 );
@@ -159,7 +159,9 @@ CREATE TABLE client_workouts (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    session_id INT REFERENCES training_sessions(id) ON DELETE CASCADE,
     weight DECIMAL(5,2) NOT NULL,
+    sets INT NOT NULL DEFAULT 1,
     reps INT NOT NULL,
     workout_date DATE DEFAULT CURRENT_DATE
 );

@@ -52,7 +52,7 @@ data class ClientProgressLog(
 )
 
 data class CreateProgressRequest(val clientId: Int, val weight: Double, val notes: String)
-data class CreateSessionRequest(val title: String, val startTime: String, val durationMinutes: Int)
+data class CreateSessionRequest(val clientId: Int, val title: String, val startTime: String, val durationMinutes: Int)
 
 data class ClientExercise(val id: Int, val name: String, val bodyPart: String)
 data class ClientSessionExercise(val id: Int, val sessionId: Int, val exerciseName: String, val sets: Int, val reps: Int, val weight: Double)
@@ -62,7 +62,9 @@ data class ClientTrainingSession(
     val id: Int,
     val title: String,
     val date: String,
-    val duration: String
+    val duration: String,
+    val clientName: String?,
+    val status: String?
 )
 
 class TrainerProgressActivity : ComponentActivity() {
@@ -141,6 +143,7 @@ fun ProgressContent(
     var showSessionDialog by remember { mutableStateOf(false) }
     var selectedSessionForExercise by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var selectedChartExercise by remember { mutableStateOf<String?>(null) }
+    var selectedSessionForExecution by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var showClientWorkoutsFor by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -177,8 +180,11 @@ fun ProgressContent(
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(logsByClient.entries.toList()) { (clientName, logs) ->
-                val clientWorkoutLogs = state.clientWorkouts.filter { it.clientName == clientName }
-                ClientProgressDashboardCard(clientName = clientName, logs = logs, onShowWorkouts = { showClientWorkoutsFor = clientName }, workoutCount = clientWorkoutLogs.size)
+                    ClientProgressDashboardCard(
+                        clientName = clientName, 
+                        logs = logs,
+                        onShowWorkouts = { showClientWorkoutsFor = clientName }
+                    )
                 }
                 item {
                     Button(
@@ -205,7 +211,9 @@ fun ProgressContent(
                         exercises = sessionExercises,
                         onAddExercise = { selectedSessionForExercise = session },
                         onDeleteExercise = { viewModel.deleteSessionExercise(it) },
-                        onShowExerciseChart = { selectedChartExercise = it }
+                        onShowExerciseChart = { selectedChartExercise = it },
+                        onShowSessionExecution = { selectedSessionForExecution = session },
+                        onSendToClient = { viewModel.sendSessionToClient(session.id) }
                     )
                 }
                 item {
@@ -234,9 +242,10 @@ fun ProgressContent(
 
         if (showSessionDialog) {
             AddSessionDialog(
+                clients = state.clients,
                 onDismiss = { showSessionDialog = false },
-                onSubmit = { title, startTime, duration ->
-                    viewModel.addSession(title, startTime, duration)
+                onSubmit = { clientId, title, startTime, duration ->
+                    viewModel.addSession(clientId, title, startTime, duration)
                     showSessionDialog = false
                 }
             )
@@ -262,6 +271,14 @@ fun ProgressContent(
             )
         }
 
+        if (selectedSessionForExecution != null) {
+            SessionExecutionDialog(
+                session = selectedSessionForExecution!!,
+                workouts = state.clientWorkouts.filter { it.sessionId == selectedSessionForExecution!!.id },
+                onDismiss = { selectedSessionForExecution = null }
+            )
+        }
+
         if (showClientWorkoutsFor != null) {
             ClientRealWorkoutsDialog(
                 clientName = showClientWorkoutsFor!!,
@@ -281,7 +298,11 @@ fun StatBox(label: String, value: String) {
 }
 
 @Composable
-fun ClientProgressDashboardCard(clientName: String, logs: List<ClientProgressLog>, onShowWorkouts: () -> Unit, workoutCount: Int) {
+fun ClientProgressDashboardCard(
+    clientName: String, 
+    logs: List<ClientProgressLog>,
+    onShowWorkouts: () -> Unit
+) {
     // Zakładamy, że logi przychodzą posortowane (lub sortujemy je tutaj) - dla wykresu odwracamy, by najstarsze były po lewej
     val chronologicalLogs = logs.reversed()
     val latestLog = logs.firstOrNull()
@@ -325,9 +346,9 @@ fun ClientProgressDashboardCard(clientName: String, logs: List<ClientProgressLog
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onShowWorkouts, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Samodzielne wpisy klienta ($workoutCount)", color = Color(0xFF1E88E5))
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(onClick = onShowWorkouts, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) {
+                Text("Historia ćwiczeń klienta", color = Color.White)
             }
         }
     }
@@ -381,8 +402,13 @@ fun TimelineSessionCard(
     exercises: List<ClientSessionExercise>,
     onAddExercise: () -> Unit,
     onDeleteExercise: (Int) -> Unit,
-    onShowExerciseChart: (String) -> Unit
+    onShowExerciseChart: (String) -> Unit,
+    onShowSessionExecution: () -> Unit,
+    onSendToClient: () -> Unit
 ) {
+    val isCompleted = session.status == "COMPLETED"
+    val isDraft = session.status == "DRAFT"
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -398,9 +424,25 @@ fun TimelineSessionCard(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = "Termin: ${session.date}", fontSize = 14.sp, color = Color.Gray)
                     Text(text = "Czas trwania: ${session.duration}", fontSize = 14.sp, color = Color.Gray)
+                    if (session.clientName != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "Dla: ${session.clientName}", fontSize = 13.sp, color = Color(0xFF1E88E5), fontWeight = FontWeight.Medium)
+                    }
+                    if (isDraft) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("📝 Szkic (niewysłany)", color = Color(0xFFFFA000), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    } else if (isCompleted) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("✅ Zrealizowany przez klienta", color = Color(0xFF4CAF50), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("⏳ Oczekuje na realizację", color = Color.Gray, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-                IconButton(onClick = onAddExercise) {
-                    Icon(Icons.Filled.Add, contentDescription = "Dodaj ćwiczenie", tint = Color(0xFF1E88E5))
+                if (!isCompleted) {
+                    IconButton(onClick = onAddExercise) {
+                        Icon(Icons.Filled.Add, contentDescription = "Dodaj ćwiczenie", tint = Color(0xFF1E88E5))
+                    }
                 }
             }
             if (exercises.isNotEmpty()) {
@@ -419,9 +461,21 @@ fun TimelineSessionCard(
                             val weightLabel = if (ex.weight > 0.0) " | ${ex.weight} kg" else ""
                             Text(text = "${ex.sets} serie x ${ex.reps} $repsLabel$weightLabel", fontSize = 12.sp, color = Color.Gray)
                         }
-                        IconButton(onClick = { onDeleteExercise(ex.id) }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red)
+                        if (!isCompleted) {
+                            IconButton(onClick = { onDeleteExercise(ex.id) }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red)
+                            }
                         }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                if (isDraft) {
+                    Button(onClick = onSendToClient, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
+                        Text("Wyślij trening do klienta", color = Color.White)
+                    }
+                } else {
+                    Button(onClick = onShowSessionExecution, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) {
+                        Text("Oceń wykonanie klienta", color = Color.White)
                     }
                 }
             }
@@ -502,10 +556,39 @@ fun AddProgressDialog(
 }
 
 @Composable
-fun AddSessionDialog(
-    onDismiss: () -> Unit,
-    onSubmit: (title: String, startTime: String, duration: Int) -> Unit
+fun SessionExecutionDialog(
+    session: ClientTrainingSession,
+    workouts: List<ClientWorkoutDto>,
+    onDismiss: () -> Unit
 ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Realizacja: ${session.title}") },
+        text = {
+            if (workouts.isEmpty()) {
+                Text("Klient nie zapisał jeszcze żadnych wyników powiązanych z tą sesją.", color = Color.Gray)
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(workouts) { w ->
+                        val isTimeBased = w.exerciseName.contains("Deska", ignoreCase = true) || w.exerciseName.contains("Plank", ignoreCase = true)
+                        val repsLabel = if (isTimeBased) "sek." else "powt."
+                        Text("• ${w.exerciseName} - Seria ${w.sets}: ${w.weight} kg x ${w.reps} $repsLabel", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij", color = Color(0xFF1E88E5)) } }
+    )
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddSessionDialog(
+    clients: List<UserResponse>,
+    onDismiss: () -> Unit,
+    onSubmit: (clientId: Int, title: String, startTime: String, duration: Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedClient by remember { mutableStateOf<UserResponse?>(clients.firstOrNull()) }
     var title by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
     var durationStr by remember { mutableStateOf("") }
@@ -515,6 +598,19 @@ fun AddSessionDialog(
         title = { Text("Zaplanuj trening") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedClient?.let { "${it.firstName} ${it.lastName}" } ?: "Brak",
+                        onValueChange = {}, readOnly = true, label = { Text("Przypisz dla") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        clients.forEach { client ->
+                            DropdownMenuItem(text = { Text("${client.firstName} ${client.lastName}") }, onClick = { selectedClient = client; expanded = false })
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -540,10 +636,10 @@ fun AddSessionDialog(
         confirmButton = {
             Button(onClick = {
                 val d = durationStr.toIntOrNull()
-                if (title.isNotBlank() && startTime.isNotBlank() && d != null) {
+                if (selectedClient != null && title.isNotBlank() && startTime.isNotBlank() && d != null) {
                     // Baza PostgreSQL oczekuje sekund, dodajemy :00 jeżeli użytkownik wpisał np. tylko 18:00
                     val formattedTime = if (startTime.count { it == ':' } == 1) "$startTime:00" else startTime
-                    onSubmit(title, formattedTime, d)
+                    onSubmit(selectedClient!!.id, title, formattedTime, d)
                 }
             }) { Text("Zapisz") }
         },
@@ -689,17 +785,16 @@ fun ClientRealWorkoutsDialog(
     workouts: List<ClientWorkoutDto>,
     onDismiss: () -> Unit
 ) {
-    // Grupujemy treningi po nazwie ćwiczenia
     var selectedExercise by remember { mutableStateOf<String?>(workouts.firstOrNull()?.exerciseName) }
     val uniqueExercises = workouts.map { it.exerciseName }.distinct()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Wyniki wpisane przez: $clientName", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        title = { Text("Historia treningów: $clientName", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (workouts.isEmpty()) {
-                    Text("Klient nie zapisał jeszcze żadnego wyniku.")
+                    Text("Klient nie posiada jeszcze żadnych wpisów.", color = Color.Gray)
                 } else {
                     var expanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
@@ -717,18 +812,18 @@ fun ClientRealWorkoutsDialog(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    val exerciseLogs = workouts.filter { it.exerciseName == selectedExercise }.sortedBy { it.date }
-                    Text("Historia wykonań:", fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                    val exerciseLogs = workouts.filter { it.exerciseName == selectedExercise }.sortedByDescending { it.id }
+                    LazyColumn(modifier = Modifier.heightIn(max = 250.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(exerciseLogs) { log ->
-                            Text("• ${log.date}: ${log.weight}kg x ${log.reps} powt.", fontSize = 14.sp)
+                            val isTimeBased = log.exerciseName.contains("Deska", ignoreCase = true) || log.exerciseName.contains("Plank", ignoreCase = true)
+                            val repsLabel = if (isTimeBased) "sek." else "powt."
+                            Text("• ${log.date} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 14.sp)
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij", color = Color(0xFF1E88E5)) } }
     )
 }
 

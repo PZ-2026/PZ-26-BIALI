@@ -72,12 +72,23 @@ class TrainerProgressViewModel : ViewModel() {
         }
     }
 
-    fun addSession(title: String, startTime: String, durationMinutes: Int) {
+    fun addSession(clientId: Int, title: String, startTime: String, durationMinutes: Int) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val request = CreateSessionRequest(title, startTime, durationMinutes)
+            val request = CreateSessionRequest(clientId, title, startTime, durationMinutes)
             when (val result = repository.addTrainerSession(request)) {
                 is ApiResult.Success -> fetchData() // Odśwież dane po sukcesie
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun sendSessionToClient(sessionId: Int) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            when (val result = repository.sendSessionToClient(sessionId)) {
+                is ApiResult.Success -> fetchData()
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
                 else -> _state.update { it.copy(isLoading = false) }
             }

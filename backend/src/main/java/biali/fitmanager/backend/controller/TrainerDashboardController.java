@@ -16,14 +16,14 @@ public class TrainerDashboardController {
     private JdbcTemplate jdbcTemplate;
 
     public record CreateProgressRequest(int clientId, Double weight, String notes) {}
-    public record CreateSessionRequest(String title, String startTime, int durationMinutes) {}
+    public record CreateSessionRequest(int clientId, String title, String startTime, int durationMinutes) {}
     public record AddSessionExerciseRequest(int exerciseId, int sets, int reps, Double weight) {}
 
     public record ProgressLogDto(int id, String clientName, String logDate, Double weight, String notes) {}
-    public record TrainingSessionDto(int id, String title, String date, String duration) {}
+    public record TrainingSessionDto(int id, String title, String date, String duration, String clientName, String status) {}
     public record ExerciseDto(int id, String name, String bodyPart) {}
     public record SessionExerciseDto(int id, int sessionId, String exerciseName, int sets, int reps, Double weight) {}
-    public record ClientWorkoutDto(int id, String clientName, String exerciseName, Double weight, int reps, String date) {}
+    public record ClientWorkoutDto(int id, String clientName, String exerciseName, Double weight, int sets, int reps, String date, Integer sessionId) {}
 
     @GetMapping("/progress")
     public ResponseEntity<List<ProgressLogDto>> getProgress(Principal principal) {
@@ -44,10 +44,15 @@ public class TrainerDashboardController {
     public ResponseEntity<List<TrainingSessionDto>> getSessions(Principal principal) {
         String email = principal.getName();
         String sql = "SELECT ts.id, ts.title, TO_CHAR(ts.start_time, 'DD.MM.YYYY HH24:MI') as date, " +
-                     "CAST(EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 AS INTEGER) || ' min' as duration " +
-                     "FROM training_sessions ts JOIN users t ON ts.trainer_id = t.id WHERE t.email = ?";
+                     "CAST(EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 AS INTEGER) || ' min' as duration, " +
+                     "u.first_name || ' ' || u.last_name as clientName, r.status as status " +
+                     "FROM training_sessions ts " +
+                     "JOIN users t ON ts.trainer_id = t.id " +
+                     "LEFT JOIN reservations r ON ts.id = r.session_id " +
+                     "LEFT JOIN users u ON r.user_id = u.id " +
+                     "WHERE t.email = ? ORDER BY ts.start_time DESC";
         List<TrainingSessionDto> sessions = jdbcTemplate.query(sql, (rs, rowNum) -> new TrainingSessionDto(
-                rs.getInt("id"), rs.getString("title"), rs.getString("date"), rs.getString("duration")), email);
+                rs.getInt("id"), rs.getString("title"), rs.getString("date"), rs.getString("duration"), rs.getString("clientName"), rs.getString("status")), email);
         return ResponseEntity.ok(sessions);
     }
 
@@ -64,8 +69,17 @@ public class TrainerDashboardController {
     public ResponseEntity<?> addSession(Principal principal, @RequestBody CreateSessionRequest req) {
         String email = principal.getName();
         Integer trainerId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
-        String sql = "INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_participants) VALUES (?, ?, CAST(? AS TIMESTAMP), CAST(? AS TIMESTAMP) + (? * INTERVAL '1 minute'), 1)";
-        jdbcTemplate.update(sql, trainerId, req.title(), req.startTime(), req.startTime(), req.durationMinutes());
+        String sql = "INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_participants) VALUES (?, ?, CAST(? AS TIMESTAMP), CAST(? AS TIMESTAMP) + (? * INTERVAL '1 minute'), 1) RETURNING id";
+        Integer sessionId = jdbcTemplate.queryForObject(sql, Integer.class, trainerId, req.title(), req.startTime(), req.startTime(), req.durationMinutes());
+        if (req.clientId() > 0 && sessionId != null) {
+            jdbcTemplate.update("INSERT INTO reservations (user_id, session_id, status) VALUES (?, ?, 'DRAFT')", req.clientId(), sessionId);
+        }
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/sessions/{sessionId}/send")
+    public ResponseEntity<?> sendSessionToClient(@PathVariable int sessionId) {
+        jdbcTemplate.update("UPDATE reservations SET status = 'CONFIRMED' WHERE session_id = ? AND status = 'DRAFT'", sessionId);
         return ResponseEntity.ok().build();
     }
 
@@ -106,13 +120,13 @@ public class TrainerDashboardController {
     @GetMapping("/client-workouts")
     public ResponseEntity<List<ClientWorkoutDto>> getClientWorkouts(Principal principal) {
         String email = principal.getName();
-        String sql = "SELECT cw.id, u.first_name || ' ' || u.last_name as clientName, e.name as exerciseName, cw.weight, cw.reps, TO_CHAR(cw.workout_date, 'DD.MM.YYYY') as date " +
+        String sql = "SELECT cw.id, u.first_name || ' ' || u.last_name as clientName, e.name as exerciseName, cw.weight, cw.sets, cw.reps, TO_CHAR(cw.workout_date, 'DD.MM.YYYY') as date, cw.session_id as sessionId " +
                      "FROM client_workouts cw JOIN users u ON cw.client_id = u.id " +
                      "JOIN exercises e ON cw.exercise_id = e.id " +
                      "JOIN trainer_clients tc ON u.id = tc.client_id " +
                      "JOIN users t ON tc.trainer_id = t.id WHERE t.email = ? ORDER BY cw.workout_date ASC";
         List<ClientWorkoutDto> workouts = jdbcTemplate.query(sql, (rs, rowNum) -> new ClientWorkoutDto(
-                rs.getInt("id"), rs.getString("clientName"), rs.getString("exerciseName"), rs.getDouble("weight"), rs.getInt("reps"), rs.getString("date")), email);
+                rs.getInt("id"), rs.getString("clientName"), rs.getString("exerciseName"), rs.getDouble("weight"), rs.getInt("sets"), rs.getInt("reps"), rs.getString("date"), (Integer) rs.getObject("sessionId")), email);
         return ResponseEntity.ok(workouts);
     }
 }

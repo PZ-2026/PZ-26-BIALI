@@ -97,3 +97,11 @@ INSERT INTO exercises (name, body_part) VALUES
 ('Prostowanie ramion na wyciągu', 'Triceps'),
 ('Deska (Plank)', 'Brzuch'),
 ('Spięcia brzucha (Crunches)', 'Brzuch');
+
+-----------------------------------------------------------
+-- 11. SESSION EXERCISES (PRZYKŁADOWE ĆWICZENIA W SESJI)
+-----------------------------------------------------------
+INSERT INTO session_exercises (session_id, exercise_id, sets, reps, weight) VALUES
+(1, 1, 4, 10, 80.00),  -- Przysiad ze sztangą
+(1, 2, 3, 12, 15.00),  -- Wykroki z hantlami
+(1, 16, 3, 60, 0.00);  -- Deska (Plank)

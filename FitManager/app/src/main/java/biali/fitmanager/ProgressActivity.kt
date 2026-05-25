@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -37,8 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val reps: Int)
-data class ClientWorkoutDto(val id: Int, val clientName: String, val exerciseName: String, val weight: Double, val reps: Int, val date: String)
+data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val sets: Int, val reps: Int, val sessionId: Int? = null)
+data class ClientWorkoutDto(val id: Int, val clientName: String, val exerciseName: String, val weight: Double, val sets: Int, val reps: Int, val date: String, val sessionId: Int? = null)
 
 class ProgressActivity : ComponentActivity() {
     private val viewModel: ProgressViewModel by viewModels()
@@ -69,7 +70,6 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
     val state by viewModel.state.collectAsState()
 
     var selectedExerciseName by remember { mutableStateOf<String?>(null) }
-    var showLogDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -81,15 +81,6 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
                     }
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showLogDialog = true },
-                containerColor = Color(0xFF00E676),
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Dodaj wynik")
-            }
         }
     ) { paddingValues ->
       Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
@@ -110,7 +101,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
 
                 if (workouts.isEmpty()) {
                     Text(
-                        text = "Nie dodałeś jeszcze żadnych wyników z treningów. Kliknij '+', aby zapisać swoje pierwsze ćwiczenie!",
+                        text = "Nie ukończyłeś jeszcze żadnego zaleconego treningu od trenera.",
                         color = Color.Gray,
                         fontSize = 16.sp
                     )
@@ -177,17 +168,6 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
         }
       }
 
-        if (showLogDialog) {
-            ClientLogWorkoutDialog(
-                exercises = state.exercises,
-                onDismiss = { showLogDialog = false },
-                onSubmit = { exerciseId, weight, reps ->
-                    viewModel.logWorkout(exerciseId, weight, reps)
-                    showLogDialog = false
-                }
-            )
-        }
-
         // Wyświetlanie oddzielnego okienka z wykresem po kliknięciu w ćwiczenie
         if (selectedExerciseName != null) {
             val logsForExercise = state.myWorkouts.filter { it.exerciseName == selectedExerciseName }
@@ -198,6 +178,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
                     exerciseName = selectedExerciseName!!,
                     logs = logsForExercise,
                     onDismiss = { selectedExerciseName = null },
+                    onEditLog = { id, w, s, r -> viewModel.updateWorkout(id, w, s, r) },
                     onDeleteLog = { viewModel.deleteWorkout(it) }
                 )
             }
@@ -210,16 +191,21 @@ fun ExerciseProgressDialog(
     exerciseName: String, 
     logs: List<ClientWorkoutDto>, 
     onDismiss: () -> Unit, 
+    onEditLog: (Int, Double, Int, Int) -> Unit,
     onDeleteLog: (Int) -> Unit
 ) {
     val startLog = logs.firstOrNull()
     val endLog = logs.lastOrNull()
     
     val startWeight = startLog?.weight?.toFloat() ?: 0f
+    val startSets = startLog?.sets ?: 0
     val startReps = startLog?.reps ?: 0
     val endWeight = endLog?.weight?.toFloat() ?: 0f
+    val endSets = endLog?.sets ?: 0
     val endReps = endLog?.reps ?: 0
     val points = logs.map { it.weight.toFloat() }
+
+    var logToEdit by remember { mutableStateOf<ClientWorkoutDto?>(null) }
 
     val isTimeBased = exerciseName.contains("Deska", ignoreCase = true) || exerciseName.contains("Plank", ignoreCase = true)
     val repsLabel = if (isTimeBased) "sek." else "powt."
@@ -229,8 +215,8 @@ fun ExerciseProgressDialog(
         title = { Text("Progres: $exerciseName", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Początkowy wynik: $startWeight kg x $startReps $repsLabel", fontSize = 14.sp)
-                Text("Obecny wynik: $endWeight kg x $endReps $repsLabel", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
+                Text("Początkowy wpis: $startWeight kg x $startReps $repsLabel (Seria $startSets)", fontSize = 14.sp)
+                Text("Obecny wpis: $endWeight kg x $endReps $repsLabel (Seria $endSets)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Text("Wykres wzrostu siły", fontSize = 12.sp, color = Color.Gray)
@@ -273,9 +259,15 @@ fun ExerciseProgressDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("• ${log.date}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 14.sp)
-                            IconButton(onClick = { onDeleteLog(log.id) }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red)
+                            Text("• ${log.date} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Row {
+                                IconButton(onClick = { logToEdit = log }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Filled.Edit, contentDescription = "Edytuj", tint = Color(0xFF1E88E5), modifier = Modifier.size(20.dp))
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(onClick = { onDeleteLog(log.id) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red, modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }
@@ -288,73 +280,57 @@ fun ExerciseProgressDialog(
             }
         }
     )
+
+    if (logToEdit != null) {
+        EditWorkoutDialog(
+            log = logToEdit!!,
+            onDismiss = { logToEdit = null },
+            onSubmit = { w, s, r ->
+                onEditLog(logToEdit!!.id, w, s, r)
+                logToEdit = null
+            }
+        )
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClientLogWorkoutDialog(
-    exercises: List<ClientExercise>,
+fun EditWorkoutDialog(
+    log: ClientWorkoutDto,
     onDismiss: () -> Unit,
-    onSubmit: (Int, Double, Int) -> Unit
+    onSubmit: (Double, Int, Int) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedExercise by remember { mutableStateOf<ClientExercise?>(exercises.firstOrNull()) }
-    var weightStr by remember { mutableStateOf("") }
-    var repsStr by remember { mutableStateOf("") }
+    var weightStr by remember { mutableStateOf(log.weight.toString()) }
+    var setsStr by remember { mutableStateOf(log.sets.toString()) }
+    var repsStr by remember { mutableStateOf(log.reps.toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Zapisz swój wynik") },
+        title = { Text("Edytuj wynik") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedExercise?.name ?: "Wybierz ćwiczenie",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Ćwiczenie") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        exercises.forEach { exercise ->
-                            DropdownMenuItem(
-                                text = { Text("${exercise.name} (${exercise.bodyPart})") },
-                                onClick = {
-                                    selectedExercise = exercise
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
                 OutlinedTextField(
-                    value = weightStr,
-                    onValueChange = { weightStr = it },
-                    label = { Text("Podniesiony ciężar (kg)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
+                    value = weightStr, onValueChange = { weightStr = it },
+                    label = { Text("Ciężar (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
                 OutlinedTextField(
-                    value = repsStr,
-                    onValueChange = { repsStr = it },
-                    label = { Text("Liczba powtórzeń (lub s.)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                    value = setsStr, onValueChange = { setsStr = it },
+                    label = { Text("Serie") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                OutlinedTextField(
+                    value = repsStr, onValueChange = { repsStr = it },
+                    label = { Text("Powtórzenia") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
             }
         },
         confirmButton = {
             Button(onClick = {
                 val w = weightStr.replace(",", ".").toDoubleOrNull()
+                val s = setsStr.toIntOrNull()
                 val r = repsStr.toIntOrNull()
-                if (selectedExercise != null && w != null && r != null) {
-                    onSubmit(selectedExercise!!.id, w, r)
+                if (w != null && s != null && r != null) {
+                    onSubmit(w, s, r)
                 }
-            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))) { Text("Zapisz", color = Color.White) }
+            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) { Text("Zapisz", color = Color.White) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )
