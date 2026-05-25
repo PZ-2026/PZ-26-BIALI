@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 // Tworzymy klasę stanu specyficzną dla ekranu postępów (wzorowaną na Waszym TrainersUiState)
 data class ProgressUiState(
     val myWorkouts: List<ClientWorkoutDto> = emptyList(),
-    val exercises: List<ClientExercise> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
     val sessionExpired: Boolean = false
@@ -34,24 +33,11 @@ class ProgressViewModel : ViewModel() {
 
             // Odpytujemy serwer przez Repozytorium
             val workoutsResult = repository.getMyWorkouts()
-            val exercisesResult = repository.getClientExercises()
 
             val workouts = if (workoutsResult is ApiResult.Success) workoutsResult.data else emptyList()
-            val exercises = if (exercisesResult is ApiResult.Success) exercisesResult.data else emptyList()
             val errorMsg = if (workoutsResult is ApiResult.Error) workoutsResult.message else null
 
-            _state.update { it.copy(myWorkouts = workouts, exercises = exercises, isLoading = false, error = errorMsg) }
-        }
-    }
-
-    fun logWorkout(exerciseId: Int, weight: Double, reps: Int) {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-            when (val result = repository.logClientWorkout(LogWorkoutRequest(exerciseId, weight, reps))) {
-                is ApiResult.Success -> fetchProgress() // odśwież po dodaniu
-                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
-                else -> _state.update { it.copy(isLoading = false) }
-            }
+            _state.update { it.copy(myWorkouts = workouts, isLoading = false, error = errorMsg) }
         }
     }
 
@@ -59,6 +45,18 @@ class ProgressViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             when (val result = repository.deleteClientWorkout(id)) {
+                is ApiResult.Success -> fetchProgress()
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun updateWorkout(id: Int, weight: Double, sets: Int, reps: Int) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val request = LogWorkoutRequest(0, weight, sets, reps, null) // exerciseId and sessionId are ignored in backend update query
+            when (val result = repository.updateClientWorkout(id, request)) {
                 is ApiResult.Success -> fetchProgress()
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
                 else -> _state.update { it.copy(isLoading = false) }

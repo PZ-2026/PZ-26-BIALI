@@ -6,9 +6,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +29,10 @@ import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.MembershipResponse
 import biali.fitmanager.network.MembershipTypeResponse
+import biali.fitmanager.network.AssignedSessionDto
+import biali.fitmanager.network.CompleteSessionRequest
+import biali.fitmanager.network.SetLogDto
+import biali.fitmanager.LogWorkoutRequest
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.LightGreen80
@@ -49,6 +59,7 @@ class HomeActivity : ComponentActivity() {
     private var trainerEndDate by mutableStateOf<String?>(null)
     private var currentTrainerId by mutableStateOf<Int?>(null)
     private var isTrainerLoading by mutableStateOf(true)
+    private var assignedSessions by mutableStateOf<List<AssignedSessionDto>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +78,7 @@ class HomeActivity : ComponentActivity() {
         fetchBalance()
         fetchMembershipTypes()
         fetchTrainerStatus()
+        fetchAssignedSessions()
 
         setContent {
             GymManagerTheme {
@@ -97,7 +109,9 @@ class HomeActivity : ComponentActivity() {
                         onTrainerClick = {
                             currentTrainerId?.let { navigateToTrainerDetails(it) }
                         },
-                        onNavigateToProgress = ::navigateToProgress
+                        onNavigateToProgress = ::navigateToProgress,
+                        assignedSessions = assignedSessions,
+                        onCompleteSession = ::completeSession
                     )
                 }
             }
@@ -110,6 +124,7 @@ class HomeActivity : ComponentActivity() {
         fetchBalance()
         fetchMembership()
         fetchTrainerStatus()
+        fetchAssignedSessions()
     }
 
     private fun fetchBalance() {
@@ -123,6 +138,24 @@ class HomeActivity : ComponentActivity() {
                     // keep local stored balance if available
                     balance = SessionManager.getBalance()
                 }
+            }
+        }
+    }
+
+    private fun fetchAssignedSessions() {
+        lifecycleScope.launch {
+            when (val result = repository.getMyAssignedSessions()) {
+                is ApiResult.Success -> assignedSessions = result.data
+                else -> Unit
+            }
+        }
+    }
+
+    private fun completeSession(sessionId: Int, request: CompleteSessionRequest) {
+        lifecycleScope.launch {
+            when (val result = repository.completeSession(sessionId, request)) {
+                is ApiResult.Success -> fetchAssignedSessions() // odśwież widok treningów
+                else -> Unit
             }
         }
     }
@@ -343,9 +376,12 @@ fun MainContent(
     trainerEndDate: String?,
     isTrainerLoading: Boolean,
     onTrainerClick: () -> Unit,
-    onNavigateToProgress: () -> Unit
+    onNavigateToProgress: () -> Unit,
+    assignedSessions: List<AssignedSessionDto>,
+    onCompleteSession: (Int, CompleteSessionRequest) -> Unit = { _, _ -> }
 ) {
     val scrollState = rememberScrollState()
+    var sessionToExecute by remember { mutableStateOf<AssignedSessionDto?>(null) }
 
     Column(
         modifier = modifier
@@ -372,9 +408,16 @@ fun MainContent(
             onClick = onTrainerClick
         )
 
-        Text(text = "Twoje ostatnie treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = "Historię swoich ćwiczeń i wykresy wzrostu siły znajdziesz w zakładce Postępy (na dole).", fontSize = 14.sp, color = Color.Gray)
-
+        if (assignedSessions.isNotEmpty()) {
+            Text(text = "Zalecone treningi od trenera", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            assignedSessions.forEach { session ->
+                AssignedSessionCard(session = session, onExecute = { sessionToExecute = session })
+            }
+        } else {
+            Text(text = "Twoje treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = "Nie masz jeszcze przypisanych zaplanowanych treningów od trenera.", fontSize = 14.sp, color = Color.Gray)
+        }
+        
         // Przycisk na samym dole
         Button(
             onClick = onNavigateToProgress,
@@ -386,6 +429,14 @@ fun MainContent(
 
         // Mały odstęp na samym dole, żeby przycisk nie dotykał krawędzi ekranu
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (sessionToExecute != null) {
+        ExecuteSessionDialog(
+            session = sessionToExecute!!,
+            onDismiss = { sessionToExecute = null },
+            onCompleteSession = onCompleteSession
+        )
     }
 }
 
@@ -582,6 +633,126 @@ fun RowScope.TableCell(text: String, weight: Float, isHeader: Boolean = false) {
     )
 }
 
+@Composable
+fun AssignedSessionCard(session: AssignedSessionDto, onExecute: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = session.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green80)
+            Text(text = "Data wykonania: ${session.date} (${session.duration})", fontSize = 14.sp, color = Color.Gray)
+            if (session.exercises.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(8.dp))
+                session.exercises.forEach { ex ->
+                    val isTimeBased = ex.exerciseName.contains("Deska", ignoreCase = true) || ex.exerciseName.contains("Plank", ignoreCase = true)
+                    val repsLabel = if (isTimeBased) "sek." else "powt."
+                    val wLabel = if (ex.weight > 0) " | ${ex.weight}kg" else ""
+                    Text("• ${ex.exerciseName}: ${ex.sets}x${ex.reps} $repsLabel$wLabel", fontSize = 14.sp)
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Trener nie wprowadził jeszcze konkretnych ćwiczeń do tej sesji.", fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color.Gray)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            if (session.status == "COMPLETED") {
+                Text("✅ Trening został zakończony", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                Button(onClick = onExecute, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Green80)) {
+                    Text("Rozpocznij i wpisz wyniki", color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+data class SetEntry(val weight: String, val reps: String)
+
+@Composable
+fun ExecuteSessionDialog(
+    session: AssignedSessionDto,
+    onDismiss: () -> Unit,
+    onCompleteSession: (Int, CompleteSessionRequest) -> Unit
+) {
+    var sessionLogs by remember {
+        mutableStateOf(
+            session.exercises.associate { ex ->
+                ex.exerciseId to List(ex.sets) { SetEntry(weight = if (ex.weight > 0) ex.weight.toString() else "", reps = ex.reps.toString()) }
+            }
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Zrealizuj: ${session.title}") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(session.exercises) { ex ->
+                    Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp)).padding(12.dp)) {
+                        Text(ex.exerciseName, fontWeight = FontWeight.Bold)
+                        val wPlan = if (ex.weight > 0) "${ex.weight}kg" else "-"
+                        Text("Plan wg trenera: ${ex.sets}x${ex.reps} | $wPlan", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val logs = sessionLogs[ex.exerciseId] ?: emptyList()
+                        logs.forEachIndexed { index, setEntry ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp), 
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            ) {
+                                Text("S. ${index + 1}", modifier = Modifier.width(36.dp), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                OutlinedTextField(
+                                    value = setEntry.weight, 
+                                    onValueChange = { newW -> 
+                                        val newList = logs.toMutableList()
+                                        newList[index] = setEntry.copy(weight = newW)
+                                        sessionLogs = sessionLogs.toMutableMap().apply { put(ex.exerciseId, newList) }
+                                    }, 
+                                    label = { Text("Waga") }, 
+                                    modifier = Modifier.weight(1f), 
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                                OutlinedTextField(
+                                    value = setEntry.reps, 
+                                    onValueChange = { newR -> 
+                                        val newList = logs.toMutableList()
+                                        newList[index] = setEntry.copy(reps = newR)
+                                        sessionLogs = sessionLogs.toMutableMap().apply { put(ex.exerciseId, newList) }
+                                    }, 
+                                    label = { Text("Powt.") }, 
+                                    modifier = Modifier.weight(1f), 
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalLogs = mutableListOf<SetLogDto>()
+                    sessionLogs.forEach { (exId, sets) ->
+                        sets.forEachIndexed { index, setEntry ->
+                            val w = setEntry.weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                            val r = setEntry.reps.toIntOrNull() ?: 0
+                            finalLogs.add(SetLogDto(exId, index + 1, w, r))
+                        }
+                    }
+                    onCompleteSession(session.id, CompleteSessionRequest(finalLogs))
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+            ) { Text("Zakończ trening", color = Color.White) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
+    )
+}
 @Preview(showBackground = true)
 @Composable
 fun MainContentPreview() {
@@ -597,7 +768,8 @@ fun MainContentPreview() {
             trainerEndDate = null,
             isTrainerLoading = false,
             onTrainerClick = {},
-            onNavigateToProgress = {}
+            onNavigateToProgress = {},
+            assignedSessions = emptyList()
         )
     }
 }

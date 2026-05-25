@@ -127,6 +127,10 @@ class FitManagerRepository(
         return executeVoidCall { api.addTrainerSession(request) }
     }
 
+    suspend fun sendSessionToClient(sessionId: Int): ApiResult<Unit> {
+        return executeVoidCall { api.sendSessionToClient(sessionId) }
+    }
+
     suspend fun getTrainerExercises(): ApiResult<List<ClientExercise>> {
         return executeBodyCall { api.getTrainerExercises() }
     }
@@ -161,6 +165,18 @@ class FitManagerRepository(
 
     suspend fun deleteClientWorkout(id: Int): ApiResult<Unit> {
         return executeVoidCall { api.deleteClientWorkout(id) }
+    }
+
+    suspend fun updateClientWorkout(id: Int, request: LogWorkoutRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateClientWorkout(id, request) }
+    }
+
+    suspend fun getMyAssignedSessions(): ApiResult<List<AssignedSessionDto>> {
+        return executeBodyCall { api.getMyAssignedSessions() }
+    }
+
+    suspend fun completeSession(sessionId: Int, request: CompleteSessionRequest): ApiResult<Unit> {
+        return executeVoidCall { api.completeSession(sessionId, request) }
     }
 
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {

@@ -55,7 +55,7 @@ CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED', 'COMPLETED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, session_id)
 );
@@ -161,3 +161,9 @@ INSERT INTO exercises (name, body_part) VALUES
 ('Prostowanie ramion na wyciągu', 'Triceps'),
 ('Deska (Plank)', 'Brzuch'),
 ('Spięcia brzucha (Crunches)', 'Brzuch');
+
+-- Dodanie przykładowych ćwiczeń do zaplanowanego treningu (sesji)
+INSERT INTO session_exercises (session_id, exercise_id, sets, reps, weight) VALUES
+(1, 1, 4, 10, 80.00),
+(1, 2, 3, 12, 15.00),
+(1, 16, 3, 60, 0.00);
