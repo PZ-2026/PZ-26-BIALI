@@ -1,11 +1,11 @@
-# PostgreSQL setup (Docker)
+# Środowisko Fullstack (Docker Compose)
 
-## 1. Uruchom baze
+## 1. Uruchom bazę danych ORAZ backend Spring Boot
 
-W katalogu projektu uruchom:
+Otwórz terminal w głównym katalogu projektu (PZ-26-BIALI) i uruchom:
 
 ```powershell
-docker compose up -d
+docker compose up -d --build
 ```
 
 To uruchomi PostgreSQL na porcie `5432` oraz automatycznie wykona skrypt `baza+data.sql` przy pierwszym starcie pustej bazy.
