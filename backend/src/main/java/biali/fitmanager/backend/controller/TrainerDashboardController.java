@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
 import java.util.List;
@@ -15,7 +16,7 @@ public class TrainerDashboardController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    public record CreateProgressRequest(int clientId, Double weight, String notes) {}
+    public record UpdateProgressNoteRequest(String notes) {}
     public record CreateSessionRequest(int clientId, String title, String startTime, int durationMinutes) {}
     public record AddSessionExerciseRequest(int exerciseId, int sets, int reps, Double weight) {}
 
@@ -32,8 +33,9 @@ public class TrainerDashboardController {
                      "TO_CHAR(pl.log_date, 'DD.MM.YYYY') as logDate, pl.weight, pl.notes " +
                      "FROM progress_logs pl " +
                      "JOIN users u ON pl.client_id = u.id " +
-                     "JOIN users t ON pl.trainer_id = t.id " +
-                     "WHERE t.email = ?";
+                     "JOIN trainer_clients tc ON u.id = tc.client_id " +
+                     "JOIN users t ON tc.trainer_id = t.id " +
+                     "WHERE t.email = ? ORDER BY pl.log_date ASC, pl.id ASC";
         List<ProgressLogDto> logs = jdbcTemplate.query(sql, (rs, rowNum) -> new ProgressLogDto(
                 rs.getInt("id"), rs.getString("clientName"), rs.getString("logDate"),
                 rs.getDouble("weight"), rs.getString("notes")), email);
@@ -43,7 +45,7 @@ public class TrainerDashboardController {
     @GetMapping("/sessions")
     public ResponseEntity<List<TrainingSessionDto>> getSessions(Principal principal) {
         String email = principal.getName();
-        String sql = "SELECT ts.id, ts.title, TO_CHAR(ts.start_time, 'DD.MM.YYYY HH24:MI') as date, " +
+        String sql = "SELECT ts.id, ts.title, TO_CHAR(ts.start_time, 'DD.MM.YYYY') as date, " +
                      "CAST(EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 AS INTEGER) || ' min' as duration, " +
                      "u.first_name || ' ' || u.last_name as clientName, r.status as status " +
                      "FROM training_sessions ts " +
@@ -56,15 +58,13 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(sessions);
     }
 
-    @PostMapping("/progress")
-    public ResponseEntity<?> addProgress(Principal principal, @RequestBody CreateProgressRequest req) {
-        String email = principal.getName();
-        Integer trainerId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
-        String sql = "INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes) VALUES (?, ?, CURRENT_DATE, ?, ?)";
-        jdbcTemplate.update(sql, req.clientId(), trainerId, req.weight(), req.notes());
+    @PutMapping("/progress/{id}/notes")
+    public ResponseEntity<?> updateProgressNote(@PathVariable int id, @RequestBody UpdateProgressNoteRequest req) {
+        jdbcTemplate.update("UPDATE progress_logs SET notes = ? WHERE id = ?", req.notes(), id);
         return ResponseEntity.ok().build();
     }
 
+    @Transactional
     @PostMapping("/sessions")
     public ResponseEntity<?> addSession(Principal principal, @RequestBody CreateSessionRequest req) {
         String email = principal.getName();
@@ -80,6 +80,12 @@ public class TrainerDashboardController {
     @PostMapping("/sessions/{sessionId}/send")
     public ResponseEntity<?> sendSessionToClient(@PathVariable int sessionId) {
         jdbcTemplate.update("UPDATE reservations SET status = 'CONFIRMED' WHERE session_id = ? AND status = 'DRAFT'", sessionId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<?> deleteSession(@PathVariable int sessionId) {
+        jdbcTemplate.update("DELETE FROM training_sessions WHERE id = ?", sessionId);
         return ResponseEntity.ok().build();
     }
 

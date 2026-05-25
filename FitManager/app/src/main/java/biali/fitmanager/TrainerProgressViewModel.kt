@@ -60,11 +60,11 @@ class TrainerProgressViewModel : ViewModel() {
         }
     }
 
-    fun addProgress(clientId: Int, weight: Double, notes: String) {
+    fun updateProgressNote(id: Int, notes: String) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val request = CreateProgressRequest(clientId, weight, notes)
-            when (val result = repository.addTrainerProgressLog(request)) {
+            val request = biali.fitmanager.network.UpdateProgressNoteRequest(notes)
+            when (val result = repository.updateProgressNote(id, request)) {
                 is ApiResult.Success -> fetchData() // Odśwież dane po sukcesie
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
                 else -> _state.update { it.copy(isLoading = false) }
@@ -88,6 +88,17 @@ class TrainerProgressViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             when (val result = repository.sendSessionToClient(sessionId)) {
+                is ApiResult.Success -> fetchData()
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun deleteSession(sessionId: Int) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            when (val result = repository.deleteTrainerSession(sessionId)) {
                 is ApiResult.Success -> fetchData()
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
                 else -> _state.update { it.copy(isLoading = false) }

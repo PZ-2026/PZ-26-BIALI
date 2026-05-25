@@ -2,6 +2,14 @@ package biali.fitmanager
 
 import android.content.Intent
 import android.os.Bundle
+import android.content.Context
+import android.net.Uri
+import android.graphics.pdf.PdfDocument
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,7 +27,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -408,27 +418,28 @@ fun MainContent(
             onClick = onTrainerClick
         )
 
-        if (assignedSessions.isNotEmpty()) {
-            Text(text = "Zalecone treningi od trenera", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            assignedSessions.forEach { session ->
+        val pendingSessions = assignedSessions.filter { it.status != "COMPLETED" }
+        val completedSessions = assignedSessions.filter { it.status == "COMPLETED" }
+
+        Text(text = "Zalecone treningi od trenera", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        if (pendingSessions.isNotEmpty()) {
+            pendingSessions.forEach { session ->
                 AssignedSessionCard(session = session, onExecute = { sessionToExecute = session })
             }
         } else {
-            Text(text = "Twoje treningi", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = "Nie masz jeszcze przypisanych zaplanowanych treningów od trenera.", fontSize = 14.sp, color = Color.Gray)
-        }
-        
-        // Przycisk na samym dole
-        Button(
-            onClick = onNavigateToProgress,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
-        ) {
-            Text("Zobacz panel treningowy", color = Color.White)
+            Text(text = "Nie masz aktualnie treningów do zrealizowania.", fontSize = 14.sp, color = Color.Gray)
         }
 
-        // Mały odstęp na samym dole, żeby przycisk nie dotykał krawędzi ekranu
-        Spacer(modifier = Modifier.height(16.dp))
+        if (completedSessions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(text = "Historia wykonanych treningów", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            completedSessions.forEach { session ->
+                AssignedSessionCard(session = session, onExecute = { sessionToExecute = session })
+            }
+        }
+        
+        // Mały odstęp na samym dole
+        Spacer(modifier = Modifier.height(8.dp))
     }
 
     if (sessionToExecute != null) {
@@ -635,14 +646,33 @@ fun RowScope.TableCell(text: String, weight: Float, isHeader: Boolean = false) {
 
 @Composable
 fun AssignedSessionCard(session: AssignedSessionDto, onExecute: () -> Unit) {
+    val isCompleted = session.status == "COMPLETED"
+    val containerColor = if (isCompleted) Color(0xFFF5F5F5) else Color.White
+    val titleColor = if (isCompleted) Color.Gray else Green80
+    val cardAlpha = if (isCompleted) 0.8f else 1f
+
+    val context = LocalContext.current
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) {
+            generateSessionPdf(context, session, uri)
+        }
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = Modifier.fillMaxWidth().alpha(cardAlpha),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCompleted) 0.dp else 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = session.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green80)
-            Text(text = "Data wykonania: ${session.date} (${session.duration})", fontSize = 14.sp, color = Color.Gray)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = session.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = titleColor)
+                    Text(text = "Data wykonania: ${session.date} (${session.duration})", fontSize = 14.sp, color = Color.Gray)
+                }
+                TextButton(onClick = { pdfLauncher.launch("Plan_${session.title.replace(" ", "_")}.pdf") }) {
+                    Text("Pobierz PDF", fontSize = 12.sp, color = Green80)
+                }
+            }
             if (session.exercises.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
@@ -658,7 +688,7 @@ fun AssignedSessionCard(session: AssignedSessionDto, onExecute: () -> Unit) {
                 Text("Trener nie wprowadził jeszcze konkretnych ćwiczeń do tej sesji.", fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color.Gray)
             }
             Spacer(modifier = Modifier.height(12.dp))
-            if (session.status == "COMPLETED") {
+            if (isCompleted) {
                 Text("✅ Trening został zakończony", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
             } else {
                 Button(onClick = onExecute, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Green80)) {
@@ -753,6 +783,64 @@ fun ExecuteSessionDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )
 }
+
+private fun generateSessionPdf(context: Context, session: AssignedSessionDto, uri: Uri) {
+    try {
+        val document = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // Format A4
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+        val paint = Paint()
+
+        // Tło kartki (białe)
+        paint.color = android.graphics.Color.WHITE
+        canvas.drawRect(0f, 0f, 595f, 842f, paint)
+
+        paint.color = android.graphics.Color.BLACK
+
+        paint.textSize = 22f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Plan Treningowy: ${session.title}", 50f, 60f, paint)
+
+        paint.textSize = 14f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Data: ${session.date} | Czas trwania: ${session.duration}", 50f, 100f, paint)
+        canvas.drawText("Trener układający: ${session.trainerName}", 50f, 125f, paint)
+
+        var y = 180f
+        paint.textSize = 16f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Zalecone ćwiczenia do wykonania:", 50f, y, paint)
+        y += 30f
+
+        paint.textSize = 14f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        if (session.exercises.isEmpty()) {
+            canvas.drawText("Brak wprowadzonych ćwiczeń.", 50f, y, paint)
+        } else {
+            session.exercises.forEachIndexed { index, ex ->
+                val isTimeBased = ex.exerciseName.contains("Deska", ignoreCase = true) || ex.exerciseName.contains("Plank", ignoreCase = true)
+                val repsLabel = if (isTimeBased) "sek." else "powt."
+                val wLabel = if (ex.weight > 0) " | ${ex.weight}kg" else ""
+                val text = "${index + 1}. ${ex.exerciseName} - ${ex.sets} serie x ${ex.reps} $repsLabel$wLabel"
+                
+                canvas.drawText(text, 50f, y, paint)
+                y += 25f
+            }
+        }
+
+        document.finishPage(page)
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            document.writeTo(outputStream)
+        }
+        document.close()
+        Toast.makeText(context, "Zapisano plan do PDF!", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Wystąpił błąd podczas zapisu PDF.", Toast.LENGTH_SHORT).show()
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun MainContentPreview() {

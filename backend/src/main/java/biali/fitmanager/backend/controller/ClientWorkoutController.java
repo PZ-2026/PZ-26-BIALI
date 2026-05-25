@@ -21,6 +21,8 @@ public class ClientWorkoutController {
     public record AssignedSessionDto(int id, String title, String date, String duration, String trainerName, String status, List<AssignedSessionExerciseDto> exercises) {}
     public record SetLogDto(int exerciseId, int setNumber, Double weight, int reps) {}
     public record CompleteSessionRequest(List<SetLogDto> logs) {}
+    public record LogWeightRequest(Double weight) {}
+    public record ClientProgressLogDto(int id, String logDate, Double weight, String notes) {}
 
     @GetMapping("/exercises")
     public ResponseEntity<List<ExerciseDto>> getExercises() {
@@ -28,6 +30,25 @@ public class ClientWorkoutController {
         List<ExerciseDto> exercises = jdbcTemplate.query(sql, (rs, rowNum) -> new ExerciseDto(
                 rs.getInt("id"), rs.getString("name"), rs.getString("body_part")));
         return ResponseEntity.ok(exercises);
+    }
+
+    @GetMapping("/progress")
+    public ResponseEntity<List<ClientProgressLogDto>> getMyProgressLogs(Principal principal) {
+        String email = principal.getName();
+        String sql = "SELECT pl.id, TO_CHAR(pl.log_date, 'DD.MM.YYYY') as logDate, pl.weight, pl.notes " +
+                     "FROM progress_logs pl JOIN users u ON pl.client_id = u.id " +
+                     "WHERE u.email = ? ORDER BY pl.log_date ASC, pl.id ASC";
+        List<ClientProgressLogDto> logs = jdbcTemplate.query(sql, (rs, rowNum) -> new ClientProgressLogDto(
+                rs.getInt("id"), rs.getString("logDate"), rs.getDouble("weight"), rs.getString("notes")), email);
+        return ResponseEntity.ok(logs);
+    }
+
+    @PostMapping("/progress")
+    public ResponseEntity<?> logWeight(Principal principal, @RequestBody LogWeightRequest req) {
+        String email = principal.getName();
+        Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
+        jdbcTemplate.update("INSERT INTO progress_logs (client_id, log_date, weight) VALUES (?, CURRENT_DATE, ?)", clientId, req.weight());
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/workouts")
@@ -70,7 +91,7 @@ public class ClientWorkoutController {
     @GetMapping("/sessions")
     public ResponseEntity<List<AssignedSessionDto>> getMySessions(Principal principal) {
         String email = principal.getName();
-        String sql = "SELECT ts.id, ts.title, TO_CHAR(ts.start_time, 'DD.MM.YYYY HH24:MI') as date, " +
+        String sql = "SELECT ts.id, ts.title, TO_CHAR(ts.start_time, 'DD.MM.YYYY') as date, " +
                      "CAST(EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 AS INTEGER) || ' min' as duration, " +
                      "t.first_name || ' ' || t.last_name as trainerName, r.status as status " +
                      "FROM training_sessions ts " +

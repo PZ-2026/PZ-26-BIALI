@@ -107,7 +107,7 @@ CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED', 'COMPLETED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED', 'COMPLETED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, session_id)
 );
@@ -118,7 +118,6 @@ CREATE TABLE reservations (
 CREATE TABLE progress_logs (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     log_date DATE NOT NULL,
     weight DECIMAL(5,2),
     notes TEXT,

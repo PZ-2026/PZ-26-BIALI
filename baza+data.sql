@@ -64,7 +64,6 @@ CREATE TABLE reservations (
 CREATE TABLE progress_logs (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     log_date DATE NOT NULL,
     weight DECIMAL(5, 2),
     notes TEXT,
@@ -135,8 +134,8 @@ INSERT INTO reservations (user_id, session_id, status) VALUES
 (3, 1, 'CONFIRMED');
 
 -- Wpis postępów treningowych przez trenera 
-INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes) VALUES
-(3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych, technika przysiadu znacznie lepsza.');
+INSERT INTO progress_logs (client_id, log_date, weight, notes) VALUES
+(3, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych, technika przysiadu znacznie lepsza.');
 
 -- Stworzenie planu treningowego dla klienta
 INSERT INTO training_plans (trainer_id, client_id, title, description) VALUES
