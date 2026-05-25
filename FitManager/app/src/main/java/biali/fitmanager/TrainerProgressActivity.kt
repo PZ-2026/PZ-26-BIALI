@@ -27,11 +27,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -51,7 +53,6 @@ data class ClientProgressLog(
     val notes: String?
 )
 
-data class CreateProgressRequest(val clientId: Int, val weight: Double, val notes: String)
 data class CreateSessionRequest(val clientId: Int, val title: String, val startTime: String, val durationMinutes: Int)
 
 data class ClientExercise(val id: Int, val name: String, val bodyPart: String)
@@ -66,6 +67,27 @@ data class ClientTrainingSession(
     val clientName: String?,
     val status: String?
 )
+
+private fun getDaysAgoText(dateString: String): String {
+    return try {
+        val sdf = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+        val date = sdf.parse(dateString) ?: return ""
+        val today = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val logDate = date.time
+        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(today - logDate)
+        when {
+            days == 0L -> "(dzisiaj)"
+            days == 1L -> "(wczoraj)"
+            days > 1L -> "($days dni temu)"
+            else -> ""
+        }
+    } catch (e: Exception) { "" }
+}
 
 class TrainerProgressActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -129,6 +151,7 @@ fun ProgressTopBar(onLogout: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressContent(
     modifier: Modifier = Modifier,
@@ -136,10 +159,15 @@ fun ProgressContent(
     viewModel: TrainerProgressViewModel
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Postępy, 1 = Treningi
+    var selectedSubTab by remember { mutableIntStateOf(0) } // Podzakładki treningów
+
+    var expandedFilter by remember { mutableStateOf(false) }
+    var selectedFilterName by remember { mutableStateOf<String?>(null) }
+    val uniqueClients = state.trainingSessions.mapNotNull { it.clientName }.distinct().sorted()
 
     // Grupowanie pomiarów po imieniu klienta
     val logsByClient = state.progressLogs.groupBy { it.clientName }
-    var showProgressDialog by remember { mutableStateOf(false) }
+    var showEditNoteDialog by remember { mutableStateOf<Pair<Int, String>?>(null) }
     var showSessionDialog by remember { mutableStateOf(false) }
     var selectedSessionForExercise by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var selectedChartExercise by remember { mutableStateOf<String?>(null) }
@@ -183,38 +211,103 @@ fun ProgressContent(
                     ClientProgressDashboardCard(
                         clientName = clientName, 
                         logs = logs,
-                        onShowWorkouts = { showClientWorkoutsFor = clientName }
+                        onShowWorkouts = { showClientWorkoutsFor = clientName },
+                        onEditNote = { logId, currentNote -> showEditNoteDialog = logId to currentNote }
                     )
-                }
-                item {
-                    Button(
-                        onClick = { showProgressDialog = true },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)) // Niebieski akcent
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Dodaj", modifier = Modifier.padding(end = 8.dp))
-                        Text("Dodaj nowy pomiar", color = Color.White)
-                    }
                 }
             }
         } else {
+            TabRow(
+                selectedTabIndex = selectedSubTab,
+                containerColor = Color.Transparent,
+                divider = {}
+            ) {
+                Tab(
+                    selected = selectedSubTab == 0,
+                    onClick = { selectedSubTab = 0 },
+                    text = { Text("Szkice", fontSize = 13.sp, fontWeight = if (selectedSubTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                )
+                Tab(
+                    selected = selectedSubTab == 1,
+                    onClick = { selectedSubTab = 1 },
+                    text = { Text("Oczekujące", fontSize = 13.sp, fontWeight = if (selectedSubTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                )
+                Tab(
+                    selected = selectedSubTab == 2,
+                    onClick = { selectedSubTab = 2 },
+                    text = { Text("Zakończone", fontSize = 13.sp, fontWeight = if (selectedSubTab == 2) FontWeight.Bold else FontWeight.Normal) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (uniqueClients.isNotEmpty()) {
+                ExposedDropdownMenuBox(
+                    expanded = expandedFilter,
+                    onExpandedChange = { expandedFilter = !expandedFilter }
+                ) {
+                    OutlinedTextField(
+                        value = selectedFilterName ?: "Wszyscy klienci",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Filtruj po kliencie") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFilter) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expandedFilter,
+                        onDismissRequest = { expandedFilter = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Wszyscy klienci") },
+                            onClick = { selectedFilterName = null; expandedFilter = false }
+                        )
+                        uniqueClients.forEach { clientName ->
+                            DropdownMenuItem(
+                                text = { Text(clientName) },
+                                onClick = { selectedFilterName = clientName; expandedFilter = false }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
             if (state.isLoading && state.trainingSessions.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             }
             state.error?.let { Text(text = it, color = Color.Red, modifier = Modifier.padding(8.dp)) }
 
+            val filteredSessions = when (selectedSubTab) {
+                0 -> state.trainingSessions.filter { it.status == "DRAFT" }
+                1 -> state.trainingSessions.filter { it.status == "CONFIRMED" || (it.status != "DRAFT" && it.status != "COMPLETED") }
+                else -> state.trainingSessions.filter { it.status == "COMPLETED" }
+            }.filter { selectedFilterName == null || it.clientName == selectedFilterName }
+
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(state.trainingSessions) { session ->
-                    val sessionExercises = state.sessionExercises.filter { it.sessionId == session.id }
-                    TimelineSessionCard(
-                        session = session,
-                        exercises = sessionExercises,
-                        onAddExercise = { selectedSessionForExercise = session },
-                        onDeleteExercise = { viewModel.deleteSessionExercise(it) },
-                        onShowExerciseChart = { selectedChartExercise = it },
-                        onShowSessionExecution = { selectedSessionForExecution = session },
-                        onSendToClient = { viewModel.sendSessionToClient(session.id) }
-                    )
+                if (filteredSessions.isEmpty()) {
+                    item {
+                        Text(
+                            text = "Brak treningów w tej kategorii.",
+                            color = Color.Gray,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    items(filteredSessions) { session ->
+                        val sessionExercises = state.sessionExercises.filter { it.sessionId == session.id }
+                        TimelineSessionCard(
+                            session = session,
+                            exercises = sessionExercises,
+                            onAddExercise = { selectedSessionForExercise = session },
+                            onDeleteExercise = { viewModel.deleteSessionExercise(it) },
+                            onShowExerciseChart = { selectedChartExercise = it },
+                            onShowSessionExecution = { selectedSessionForExecution = session },
+                            onSendToClient = { viewModel.sendSessionToClient(session.id) },
+                            onDeleteSession = { viewModel.deleteSession(session.id) }
+                        )
+                    }
                 }
                 item {
                     Button(
@@ -229,13 +322,13 @@ fun ProgressContent(
             }
         }
 
-        if (showProgressDialog) {
-            AddProgressDialog(
-                clients = state.clients,
-                onDismiss = { showProgressDialog = false },
-                onSubmit = { clientId, weight, notes ->
-                    viewModel.addProgress(clientId, weight, notes)
-                    showProgressDialog = false
+        if (showEditNoteDialog != null) {
+            EditNoteDialog(
+                initialNote = showEditNoteDialog!!.second,
+                onDismiss = { showEditNoteDialog = null },
+                onSubmit = { note -> 
+                    viewModel.updateProgressNote(showEditNoteDialog!!.first, note)
+                    showEditNoteDialog = null
                 }
             )
         }
@@ -301,11 +394,11 @@ fun StatBox(label: String, value: String) {
 fun ClientProgressDashboardCard(
     clientName: String, 
     logs: List<ClientProgressLog>,
-    onShowWorkouts: () -> Unit
+    onShowWorkouts: () -> Unit,
+    onEditNote: (Int, String) -> Unit
 ) {
-    // Zakładamy, że logi przychodzą posortowane (lub sortujemy je tutaj) - dla wykresu odwracamy, by najstarsze były po lewej
-    val chronologicalLogs = logs.reversed()
-    val latestLog = logs.firstOrNull()
+    val chronologicalLogs = logs
+    val latestLog = logs.lastOrNull()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -325,7 +418,8 @@ fun ClientProgressDashboardCard(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(text = clientName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(text = "Ostatni pomiar: ${latestLog?.logDate ?: "Brak"}", fontSize = 12.sp, color = Color.Gray)
+                        val daysAgo = latestLog?.logDate?.let { getDaysAgoText(it) } ?: ""
+                        Text(text = "Ostatni pomiar: ${latestLog?.logDate ?: "Brak"} $daysAgo", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
                 if (latestLog != null) {
@@ -333,7 +427,7 @@ fun ClientProgressDashboardCard(
                 }
             }
 
-            if (chronologicalLogs.size > 1) {
+            if (chronologicalLogs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(text = "Progresja wagi", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
                 WeightLineChart(logs = chronologicalLogs)
@@ -343,6 +437,13 @@ fun ClientProgressDashboardCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp)).padding(12.dp)) {
                     Text(text = "Notatka trenera:\n${latestLog.notes}", fontSize = 13.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                }
+            }
+
+            if (latestLog != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { onEditNote(latestLog.id, latestLog.notes ?: "") }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (latestLog.notes.isNullOrBlank()) "Dodaj notatkę do pomiaru" else "Edytuj notatkę")
                 }
             }
 
@@ -369,11 +470,11 @@ fun WeightLineChart(logs: List<ClientProgressLog>) {
     ) {
         val width = size.width
         val height = size.height
-        val xStep = if (weights.size > 1) width / (weights.size - 1) else width
+        val xStep = if (weights.size > 1) width / (weights.size - 1) else 0f
 
         val path = Path()
         weights.forEachIndexed { index, weight ->
-            val x = index * xStep
+            val x = if (weights.size == 1) width / 2 else index * xStep
             val y = height - ((weight - minWeight) / range) * height
 
             if (index == 0) {
@@ -404,15 +505,18 @@ fun TimelineSessionCard(
     onDeleteExercise: (Int) -> Unit,
     onShowExerciseChart: (String) -> Unit,
     onShowSessionExecution: () -> Unit,
-    onSendToClient: () -> Unit
+    onSendToClient: () -> Unit,
+    onDeleteSession: () -> Unit
 ) {
     val isCompleted = session.status == "COMPLETED"
     val isDraft = session.status == "DRAFT"
+    val bgColor = if (isCompleted) Color(0xFFF9F9F9) else Color.White
+    val cardAlpha = if (isCompleted) 0.8f else 1f
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier.fillMaxWidth().alpha(cardAlpha),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCompleted) 0.dp else 2.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -440,8 +544,13 @@ fun TimelineSessionCard(
                     }
                 }
                 if (!isCompleted) {
-                    IconButton(onClick = onAddExercise) {
-                        Icon(Icons.Filled.Add, contentDescription = "Dodaj ćwiczenie", tint = Color(0xFF1E88E5))
+                    Row {
+                        IconButton(onClick = onDeleteSession) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Usuń trening", tint = Color.Red)
+                        }
+                        IconButton(onClick = onAddExercise) {
+                            Icon(Icons.Filled.Add, contentDescription = "Dodaj ćwiczenie", tint = Color(0xFF1E88E5))
+                        }
                     }
                 }
             }
@@ -483,73 +592,27 @@ fun TimelineSessionCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddProgressDialog(
-    clients: List<UserResponse>,
+fun EditNoteDialog(
+    initialNote: String,
     onDismiss: () -> Unit,
-    onSubmit: (clientId: Int, weight: Double, notes: String) -> Unit
+    onSubmit: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedClient by remember { mutableStateOf<UserResponse?>(clients.firstOrNull()) }
-    var weightStr by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(initialNote) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Dodaj pomiar") },
+        title = { Text("Notatka do pomiaru") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedClient?.let { "${it.firstName} ${it.lastName}" } ?: "Brak klientów",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Podopieczny") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        clients.forEach { client ->
-                            DropdownMenuItem(
-                                text = { Text("${client.firstName} ${client.lastName}") },
-                                onClick = {
-                                    selectedClient = client
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = weightStr,
-                    onValueChange = { weightStr = it },
-                    label = { Text("Waga (kg)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     label = { Text("Notatki") },
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
         },
         confirmButton = {
-            Button(onClick = {
-                // Zastępujemy przecinek kropką i konwertujemy
-                val w = weightStr.replace(",", ".").toDoubleOrNull()
-                if (selectedClient != null && w != null) {
-                    onSubmit(selectedClient!!.id, w, notes)
-                }
-            }) { Text("Dodaj") }
+            Button(onClick = { onSubmit(notes) }) { Text("Zapisz") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )
@@ -592,6 +655,10 @@ fun AddSessionDialog(
     var title by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
     var durationStr by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -617,13 +684,28 @@ fun AddSessionDialog(
                     label = { Text("Nazwa treningu") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = startTime,
-                    onValueChange = { startTime = it },
-                    label = { Text("Data i czas") },
-                    placeholder = { Text("np. 2024-05-20 18:00") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = startTime,
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("Data treningu") },
+                        placeholder = { Text("Wybierz datę") },
+                        isError = errorMessage != null,
+                        trailingIcon = {
+                            Icon(Icons.Filled.DateRange, contentDescription = "Wybierz datę", tint = Color(0xFF1E88E5))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showDatePicker = true }
+                    )
+                }
+                if (errorMessage != null) {
+                    Text(text = errorMessage!!, color = Color.Red, fontSize = 12.sp)
+                }
                 OutlinedTextField(
                     value = durationStr,
                     onValueChange = { durationStr = it },
@@ -636,15 +718,42 @@ fun AddSessionDialog(
         confirmButton = {
             Button(onClick = {
                 val d = durationStr.toIntOrNull()
+                val regex = Regex("""^\d{4}-\d{2}-\d{2}$""")
                 if (selectedClient != null && title.isNotBlank() && startTime.isNotBlank() && d != null) {
-                    // Baza PostgreSQL oczekuje sekund, dodajemy :00 jeżeli użytkownik wpisał np. tylko 18:00
-                    val formattedTime = if (startTime.count { it == ':' } == 1) "$startTime:00" else startTime
-                    onSubmit(selectedClient!!.id, title, formattedTime, d)
+                    if (!startTime.matches(regex)) {
+                        errorMessage = "Wymagany format daty to: YYYY-MM-DD"
+                    } else {
+                        val formattedTime = "$startTime 00:00:00"
+                        onSubmit(selectedClient!!.id, title, formattedTime, d)
+                    }
                 }
             }) { Text("Zapisz") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                        // DatePicker zwraca czas w strefie UTC
+                        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                        startTime = sdf.format(java.util.Date(millis))
+                        errorMessage = null
+                    }
+                    showDatePicker = false
+                }) { Text("Wybierz") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Anuluj") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

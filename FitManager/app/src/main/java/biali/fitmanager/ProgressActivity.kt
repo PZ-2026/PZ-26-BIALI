@@ -70,6 +70,7 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
     val state by viewModel.state.collectAsState()
 
     var selectedExerciseName by remember { mutableStateOf<String?>(null) }
+    var showWeightDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -98,6 +99,42 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
             else -> {
                 val workouts = state.myWorkouts
                 val groupedWorkouts = workouts.groupBy { it.exerciseName }
+                
+                val progressLogs = state.progressLogs
+                val latestLog = progressLogs.lastOrNull()
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Twoja waga", fontSize = 14.sp, color = Color.Gray)
+                            if (latestLog != null) {
+                                Text("${latestLog.weight} kg", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4A6B5D))
+                                Text("Ostatni pomiar: ${latestLog.logDate}", fontSize = 12.sp, color = Color.Gray)
+                            } else {
+                                Text("Brak pomiarów", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                            }
+                        }
+                        Button(
+                            onClick = { showWeightDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                        ) {
+                            Text("Zapisz wagę", color = Color.White)
+                        }
+                    }
+                    if (latestLog?.notes?.isNotBlank() == true) {
+                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                        Text(text = "Notatka trenera:\n${latestLog.notes}", fontSize = 13.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, modifier = Modifier.padding(16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
 
                 if (workouts.isEmpty()) {
                     Text(
@@ -136,31 +173,36 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
                     val firstWeight = logs.first().weight
                     val lastWeight = logs.last().weight
 
-                    Row(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                selectedExerciseName = exerciseName
-                            }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 4.dp)
+                            .clickable { selectedExerciseName = exerciseName },
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Text(text = exerciseName, modifier = Modifier.weight(1f), color = Color.DarkGray, fontWeight = FontWeight.Medium)
-                        Text(
-                            text = "${firstWeight}kg -> ${lastWeight}kg",
-                            modifier = Modifier.weight(0.5f),
-                            color = Color.DarkGray
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Pokaż wykres",
-                            tint = Color(0xFF00E676),
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = exerciseName, modifier = Modifier.weight(1f), color = Color.DarkGray, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "${firstWeight}kg -> ${lastWeight}kg",
+                                modifier = Modifier.weight(0.5f),
+                                color = Color.DarkGray,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Pokaż wykres",
+                                tint = Color(0xFF00E676),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -182,6 +224,31 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
                     onDeleteLog = { viewModel.deleteWorkout(it) }
                 )
             }
+        }
+
+        if (showWeightDialog) {
+            var weightStr by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showWeightDialog = false },
+                title = { Text("Zapisz dzisiejszą wagę") },
+                text = {
+                    OutlinedTextField(
+                        value = weightStr, onValueChange = { weightStr = it },
+                        label = { Text("Waga (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val w = weightStr.replace(",", ".").toDoubleOrNull()
+                        if (w != null) {
+                            viewModel.logWeight(w)
+                            showWeightDialog = false
+                        }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))) { Text("Zapisz", color = Color.White) }
+                },
+                dismissButton = { TextButton(onClick = { showWeightDialog = false }) { Text("Anuluj", color = Color.Gray) } }
+            )
         }
     }
 }

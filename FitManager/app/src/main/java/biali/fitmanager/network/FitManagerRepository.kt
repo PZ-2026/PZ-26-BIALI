@@ -119,8 +119,8 @@ class FitManagerRepository(
         return executeBodyCall { api.getTrainerSessions() }
     }
 
-    suspend fun addTrainerProgressLog(request: biali.fitmanager.CreateProgressRequest): ApiResult<Unit> {
-        return executeVoidCall { api.addTrainerProgressLog(request) }
+    suspend fun updateProgressNote(id: Int, request: UpdateProgressNoteRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateProgressNote(id, request) }
     }
 
     suspend fun addTrainerSession(request: biali.fitmanager.CreateSessionRequest): ApiResult<Unit> {
@@ -129,6 +129,10 @@ class FitManagerRepository(
 
     suspend fun sendSessionToClient(sessionId: Int): ApiResult<Unit> {
         return executeVoidCall { api.sendSessionToClient(sessionId) }
+    }
+
+    suspend fun deleteTrainerSession(sessionId: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteTrainerSession(sessionId) }
     }
 
     suspend fun getTrainerExercises(): ApiResult<List<ClientExercise>> {
@@ -153,6 +157,14 @@ class FitManagerRepository(
 
     suspend fun getClientExercises(): ApiResult<List<ClientExercise>> {
         return executeBodyCall { api.getClientExercises() }
+    }
+
+    suspend fun getClientProgressLogs(): ApiResult<List<ClientProgressLogDto>> {
+        return executeBodyCall { api.getClientProgressLogs() }
+    }
+
+    suspend fun addClientProgressLog(request: LogWeightRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addClientProgressLog(request) }
     }
 
     suspend fun getMyWorkouts(): ApiResult<List<ClientWorkoutDto>> {

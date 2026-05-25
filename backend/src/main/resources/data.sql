@@ -67,8 +67,8 @@ VALUES (3, 1, 'CONFIRMED');
 -----------------------------------------------------------
 -- 8. PROGRESS
 -----------------------------------------------------------
-INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes)
-VALUES (3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych.');
+INSERT INTO progress_logs (client_id, log_date, weight, notes)
+VALUES (3, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych.');
 
 -----------------------------------------------------------
 -- 9. TRAINING PLAN

@@ -23,6 +23,9 @@ data class AssignedSessionDto(val id: Int, val title: String, val date: String, 
 data class SetLogDto(val exerciseId: Int, val setNumber: Int, val weight: Double, val reps: Int)
 data class CompleteSessionRequest(val logs: List<SetLogDto>)
 
+data class LogWeightRequest(val weight: Double)
+data class UpdateProgressNoteRequest(val notes: String)
+data class ClientProgressLogDto(val id: Int, val logDate: String, val weight: Double, val notes: String?)
 
 interface FitManagerApi {
     @POST("api/auth/login")
@@ -77,14 +80,17 @@ interface FitManagerApi {
     @GET("api/trainer/sessions")
     suspend fun getTrainerSessions(): retrofit2.Response<List<ClientTrainingSession>>
 
-    @POST("api/trainer/progress")
-    suspend fun addTrainerProgressLog(@Body request: biali.fitmanager.CreateProgressRequest): Response<Void>
+    @PUT("api/trainer/progress/{id}/notes")
+    suspend fun updateProgressNote(@Path("id") id: Int, @Body request: UpdateProgressNoteRequest): Response<Void>
 
     @POST("api/trainer/sessions")
     suspend fun addTrainerSession(@Body request: biali.fitmanager.CreateSessionRequest): Response<Void>
 
     @POST("api/trainer/sessions/{sessionId}/send")
     suspend fun sendSessionToClient(@Path("sessionId") sessionId: Int): Response<Void>
+
+    @DELETE("api/trainer/sessions/{sessionId}")
+    suspend fun deleteTrainerSession(@Path("sessionId") sessionId: Int): Response<Void>
 
     @GET("api/trainer/exercises")
     suspend fun getTrainerExercises(): Response<List<ClientExercise>>
@@ -103,6 +109,12 @@ interface FitManagerApi {
 
     @GET("api/client/exercises")
     suspend fun getClientExercises(): Response<List<ClientExercise>>
+
+    @GET("api/client/progress")
+    suspend fun getClientProgressLogs(): Response<List<ClientProgressLogDto>>
+
+    @POST("api/client/progress")
+    suspend fun addClientProgressLog(@Body request: LogWeightRequest): Response<Void>
 
     @GET("api/client/workouts")
     suspend fun getMyWorkouts(): Response<List<ClientWorkoutDto>>
