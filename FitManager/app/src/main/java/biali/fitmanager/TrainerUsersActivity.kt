@@ -73,7 +73,8 @@ class TrainerUsersActivity : ComponentActivity() {
                     topBar = { TrainerNavbar(onLogout = ::logout) },
                     bottomBar = { 
                         TrainerBottomNav(
-                            onNavigateToProgress = { navigateToProgress() }
+                            onNavigateToProgress = { navigateToProgress() },
+                            onNavigateToAccount = { navigateToAccount() }
                         ) 
                     }
                 ) { innerPadding ->
@@ -100,6 +101,11 @@ class TrainerUsersActivity : ComponentActivity() {
         val intent = Intent(this, TrainerProgressActivity::class.java)
         startActivity(intent)
     }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java)
+        startActivity(intent)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,7 +121,6 @@ fun TrainerNavbar(onLogout: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("230.00zł", fontSize = 16.sp)
             }
         },
         actions = {
@@ -200,7 +205,7 @@ private fun RowScope.TrainerCell(text: String, weight: Float, isHeader: Boolean 
 }
 
 @Composable
-private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}) {
+private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}, onNavigateToAccount: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -217,17 +222,6 @@ private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}) {
             )
         )
         NavigationBarItem(
-            selected = true,
-            onClick = { },
-            label = { Text("Trener") },
-            icon = { androidx.compose.material3.Icon(Icons.Filled.Person, contentDescription = "Trener") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Green80,
-                selectedTextColor = Green80,
-                indicatorColor = LightGreen80
-            )
-        )
-        NavigationBarItem(
             selected = false,
             onClick = onNavigateToProgress,
             label = { Text("Postęp") },
@@ -235,7 +229,7 @@ private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}) {
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToAccount,
             label = { Text("Konto") },
             icon = { androidx.compose.material3.Icon(Icons.Filled.Person, contentDescription = "Konto") }
         )

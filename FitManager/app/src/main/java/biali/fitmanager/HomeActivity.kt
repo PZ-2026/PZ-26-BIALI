@@ -101,7 +101,8 @@ class HomeActivity : ComponentActivity() {
                             onNavigateToHome = { /* Już tu jesteśmy */ },
                             onNavigateToTrainers = ::navigateToTrainers,
                             onNavigateToMemberships = ::navigateToMemberships,
-                                    onNavigateToProgress = ::navigateToProgress
+                            onNavigateToProgress = ::navigateToProgress,
+                            onNavigateToAccount = ::navigateToAccount
                         ) 
                     }
                 ) { innerPadding ->
@@ -301,6 +302,11 @@ class HomeActivity : ComponentActivity() {
 
     private fun navigateToProgress() {
         val intent = Intent(this, ProgressActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java)
         startActivity(intent)
     }
 }

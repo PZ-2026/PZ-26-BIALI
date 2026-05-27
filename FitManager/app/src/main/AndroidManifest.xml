@@ -35,6 +35,7 @@
         <activity android:name=".RegisterActivity" />
         <activity android:name=".MembershipsActivity" />
         <activity android:name=".WalletActivity" />
+        <activity android:name=".AccountActivity" />
         <activity android:name=".TrainerUsersActivity" />
         <activity android:name=".TrainersActivity" />
         <activity android:name=".AdminHomeActivity" />

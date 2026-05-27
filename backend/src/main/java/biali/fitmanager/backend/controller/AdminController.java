@@ -19,6 +19,7 @@ import biali.fitmanager.backend.dto.AuthErrorResponse;
 import biali.fitmanager.backend.dto.UserResponse;
 import biali.fitmanager.backend.dto.UserUpsertRequest;
 import biali.fitmanager.backend.model.AppUser;
+import biali.fitmanager.backend.repository.PaymentRepository;
 import biali.fitmanager.backend.model.TrainerClient;
 import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.TrainerClientRepository;
@@ -34,15 +35,18 @@ public class AdminController {
     private final TrainerClientRepository trainerClientRepository;
     private final PasswordEncoder passwordEncoder;
     private final biali.fitmanager.backend.service.PdfReportService pdfReportService;
+    private final PaymentRepository paymentRepository;
 
     public AdminController(AppUserRepository appUserRepository,
                            TrainerClientRepository trainerClientRepository,
                            PasswordEncoder passwordEncoder,
-                           biali.fitmanager.backend.service.PdfReportService pdfReportService) {
+                           biali.fitmanager.backend.service.PdfReportService pdfReportService,
+                           PaymentRepository paymentRepository) {
         this.appUserRepository = appUserRepository;
         this.trainerClientRepository = trainerClientRepository;
         this.passwordEncoder = passwordEncoder;
         this.pdfReportService = pdfReportService;
+        this.paymentRepository = paymentRepository;
     }
 
     @GetMapping("/users")
@@ -152,6 +156,12 @@ public class AdminController {
                 .toList();
 
         return ResponseEntity.ok(clients);
+    }
+
+    @GetMapping("/revenue/memberships")
+    public ResponseEntity<Double> getMembershipRevenue() {
+        var total = paymentRepository.sumSuccessfulMembershipRevenue();
+        return ResponseEntity.ok(total == null ? 0.0 : total.doubleValue());
     }
 
     @GetMapping(value = "/reports/users/pdf", produces = "application/pdf")

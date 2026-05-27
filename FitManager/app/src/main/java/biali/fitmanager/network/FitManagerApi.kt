@@ -37,6 +37,9 @@ interface FitManagerApi {
     @GET("api/me")
     suspend fun getMe(): Response<MeResponse>
 
+    @POST("api/me/password")
+    suspend fun changeMyPassword(@Body request: ChangePasswordRequest): Response<Void>
+
     @GET("api/admin/users")
     suspend fun getUsers(@Query("role") role: String? = null): Response<List<UserResponse>>
 
@@ -69,6 +72,9 @@ interface FitManagerApi {
 
     @GET("api/admin/trainers/{trainerId}/clients")
     suspend fun getTrainerClients(@Path("trainerId") trainerId: Int): Response<List<UserResponse>>
+
+    @GET("api/admin/revenue/memberships")
+    suspend fun getGymMembershipRevenue(): Response<Double>
 
     @GET("api/trainer/me/clients")
     suspend fun getMyTrainerClients(): Response<List<UserResponse>>
@@ -106,6 +112,9 @@ interface FitManagerApi {
 
     @GET("api/trainer/client-workouts")
     suspend fun getTrainerClientWorkouts(): Response<List<ClientWorkoutDto>>
+
+    @GET("api/trainer/revenue")
+    suspend fun getMyTrainerRevenue(): Response<Double>
 
     @GET("api/client/exercises")
     suspend fun getClientExercises(): Response<List<ClientExercise>>
@@ -148,6 +157,9 @@ interface FitManagerApi {
 
     @GET("api/memberships/me")
     suspend fun getMyMembership(): Response<MembershipResponse>
+
+    @GET("api/memberships")
+    suspend fun getMemberships(@Query("userId") userId: Int? = null): Response<List<MembershipResponse>>
 
     @GET("api/membership-types")
     suspend fun getMembershipTypes(): Response<List<MembershipTypeResponse>>

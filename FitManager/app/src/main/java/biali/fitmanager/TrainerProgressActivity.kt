@@ -107,7 +107,7 @@ class TrainerProgressActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { ProgressTopBar(onLogout = ::logout) },
-                    bottomBar = { ProgressBottomNav(onNavigateToClients = ::navigateToClients) }
+                    bottomBar = { ProgressBottomNav(onNavigateToClients = ::navigateToClients, onNavigateToAccount = ::navigateToAccount) }
                 ) { innerPadding ->
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
@@ -123,6 +123,11 @@ class TrainerProgressActivity : ComponentActivity() {
         val intent = Intent(this, TrainerUsersActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
         }
+        startActivity(intent)
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java)
         startActivity(intent)
     }
 
@@ -937,22 +942,16 @@ fun ClientRealWorkoutsDialog(
 }
 
 @Composable
-private fun ProgressBottomNav(onNavigateToClients: () -> Unit) {
+private fun ProgressBottomNav(onNavigateToClients: () -> Unit, onNavigateToAccount: () -> Unit) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
     ) {
         NavigationBarItem(
             selected = false,
-            onClick = { /* Brak akcji */ },
+            onClick = onNavigateToClients,
             label = { Text("Panel") },
             icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToClients,
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
         )
         NavigationBarItem(
             selected = true,
@@ -967,7 +966,7 @@ private fun ProgressBottomNav(onNavigateToClients: () -> Unit) {
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToAccount,
             label = { Text("Konto") },
             icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
         )

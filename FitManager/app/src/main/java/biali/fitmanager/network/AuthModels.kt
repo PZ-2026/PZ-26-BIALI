@@ -1,5 +1,7 @@
 package biali.fitmanager.network
 
+import com.google.gson.annotations.SerializedName
+
 data class LoginRequest(
     val email: String,
     val password: String
@@ -39,6 +41,7 @@ data class MeResponse(
     val lastName: String,
     val phoneNumber: String? = null,
     val name: String? = null,
+    @SerializedName("accountBalance")
     val balance: Double? = null,
     val trainerId: Int? = null,
     val trainerEndDate: String? = null
@@ -84,5 +87,10 @@ data class PurchaseMembershipRequest(
 
 data class TopUpRequest(
     val amount: Double
+)
+
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
 )
 

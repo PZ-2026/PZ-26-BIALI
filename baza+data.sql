@@ -111,7 +111,8 @@ CREATE TABLE client_workouts (
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number) VALUES
 ('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Słowik', '123456789'),
 ('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321'),
-('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333');
+('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333'),
+('klient2@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Jan', 'Kowalski', '123456789');
 
 -- Przypisanie klienta (ID 3) do trenera (ID 2)
 INSERT INTO trainer_clients (trainer_id, client_id) VALUES

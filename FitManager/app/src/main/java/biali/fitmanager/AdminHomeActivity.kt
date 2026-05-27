@@ -88,7 +88,7 @@ class AdminHomeActivity : ComponentActivity() {
                             onLogout = ::logout
                         )
                     },
-                    bottomBar = { AdminBottomNav() }
+                    bottomBar = { AdminBottomNav(onNavigateToAccount = ::navigateToAccount) }
                 ) { innerPadding ->
                     AdminDashboardScreen(
                         modifier = Modifier.padding(innerPadding),
@@ -161,6 +161,11 @@ class AdminHomeActivity : ComponentActivity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java)
+        startActivity(intent)
     }
 }
 
@@ -294,7 +299,7 @@ private fun AdminDashboardScreen(
 }
 
 @Composable
-private fun AdminBottomNav() {
+private fun AdminBottomNav(onNavigateToAccount: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -324,7 +329,7 @@ private fun AdminBottomNav() {
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToAccount,
             label = { Text("Konto") },
             icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
         )

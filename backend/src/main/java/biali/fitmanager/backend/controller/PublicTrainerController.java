@@ -82,7 +82,7 @@ public class PublicTrainerController {
         }
 
         // Price for renting a trainer for 30 days — mirror membership flow
-        BigDecimal price = new BigDecimal("199.99");
+        BigDecimal price = new BigDecimal("199.00");
         if (client.getAccountBalance().compareTo(price) < 0) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new AuthErrorResponse("Insufficient funds"));
         }
