@@ -19,6 +19,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -107,7 +108,7 @@ class TrainerProgressActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { ProgressTopBar(onLogout = ::logout) },
-                    bottomBar = { ProgressBottomNav(onNavigateToHome = ::navigateToHome, onNavigateToClients = ::navigateToClients) }
+                    bottomBar = { ProgressBottomNav(onNavigateToHome = ::navigateToHome, onNavigateToClients = ::navigateToClients, onNavigateToAccount = ::navigateToAccount) }
                 ) { innerPadding ->
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
@@ -128,6 +129,13 @@ class TrainerProgressActivity : ComponentActivity() {
 
     private fun navigateToClients() {
         val intent = Intent(this, TrainerUsersActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
         }
         startActivity(intent)
@@ -944,7 +952,7 @@ fun ClientRealWorkoutsDialog(
 }
 
 @Composable
-private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToClients: () -> Unit) {
+private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToClients: () -> Unit, onNavigateToAccount: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -974,9 +982,9 @@ private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToCli
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }
         )
     }
 }

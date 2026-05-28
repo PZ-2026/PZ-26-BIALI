@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -74,7 +75,8 @@ class TrainerUsersActivity : ComponentActivity() {
                     bottomBar = {
                         TrainerBottomNav(
                             onNavigateToHome = ::navigateToHome,
-                            onNavigateToProgress = { navigateToProgress() }
+                            onNavigateToProgress = { navigateToProgress() },
+                            onNavigateToAccount = { navigateToAccount() }
                         )
                     }
                 ) { innerPadding ->
@@ -106,6 +108,13 @@ class TrainerUsersActivity : ComponentActivity() {
 
     private fun navigateToProgress() {
         val intent = Intent(this, TrainerProgressActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
         }
         startActivity(intent)
@@ -210,7 +219,7 @@ private fun RowScope.TrainerCell(text: String, weight: Float, isHeader: Boolean 
 }
 
 @Composable
-private fun TrainerBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToProgress: () -> Unit = {}) {
+private fun TrainerBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToProgress: () -> Unit = {}, onNavigateToAccount: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -245,9 +254,9 @@ private fun TrainerBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToProg
         )
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { androidx.compose.material3.Icon(Icons.Filled.Person, contentDescription = "Konto") }
+            icon = { androidx.compose.material3.Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }
         )
     }
 }

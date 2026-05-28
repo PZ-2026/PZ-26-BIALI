@@ -1,5 +1,6 @@
 package biali.fitmanager
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -56,16 +57,50 @@ class ProgressActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ProgressScreen(viewModel, onBackClick = { finish() })
+                    ProgressScreen(
+                        viewModel = viewModel,
+                        onBackClick = { finish() },
+                        onNavigateToHome = ::navigateToHome,
+                        onNavigateToTrainers = ::navigateToTrainers,
+                        onNavigateToMemberships = ::navigateToMemberships,
+                        onNavigateToAccount = ::navigateToAccount
+                    )
                 }
             }
         }
+    }
+
+    private fun navigateToHome() {
+        startActivity(Intent(this, HomeActivity::class.java))
+        finish()
+    }
+
+    private fun navigateToTrainers() {
+        startActivity(Intent(this, TrainersActivity::class.java))
+        finish()
+    }
+
+    private fun navigateToMemberships() {
+        startActivity(Intent(this, MembershipsActivity::class.java))
+        finish()
+    }
+
+    private fun navigateToAccount() {
+        startActivity(Intent(this, AccountActivity::class.java))
+        finish()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
+fun ProgressScreen(
+    viewModel: ProgressViewModel,
+    onBackClick: () -> Unit,
+    onNavigateToHome: () -> Unit,
+    onNavigateToTrainers: () -> Unit,
+    onNavigateToMemberships: () -> Unit,
+    onNavigateToAccount: () -> Unit
+) {
 
     val state by viewModel.state.collectAsState()
 
@@ -81,6 +116,16 @@ fun ProgressScreen(viewModel: ProgressViewModel, onBackClick: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz", tint = Color(0xFF4A6B5D))
                     }
                 }
+            )
+        },
+        bottomBar = {
+            FitBottomNav(
+                currentRoute = "progress",
+                onNavigateToHome = onNavigateToHome,
+                onNavigateToTrainers = onNavigateToTrainers,
+                onNavigateToMemberships = onNavigateToMemberships,
+                onNavigateToProgress = { },
+                onNavigateToAccount = onNavigateToAccount
             )
         }
     ) { paddingValues ->

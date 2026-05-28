@@ -48,7 +48,28 @@ class MembershipsActivity : ComponentActivity() {
             GymManagerTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    topBar = { MembershipsTopBar(onBack = { finish() }) }
+                    topBar = { MembershipsTopBar(onBack = { finish() }) },
+                    bottomBar = {
+                        FitBottomNav(
+                            currentRoute = "memberships",
+                            onNavigateToHome = { finish() },
+                            onNavigateToTrainers = {
+                                val intent = Intent(this@MembershipsActivity, TrainersActivity::class.java)
+                                startActivity(intent)
+                                finish()
+                            },
+                            onNavigateToMemberships = { },
+                            onNavigateToProgress = {
+                                val intent = Intent(this@MembershipsActivity, ProgressActivity::class.java)
+                                startActivity(intent)
+                                finish()
+                            },
+                            onNavigateToAccount = {
+                                val intent = Intent(this@MembershipsActivity, AccountActivity::class.java)
+                                startActivity(intent)
+                            }
+                        )
+                    }
                 ) { innerPadding ->
                     MembershipsContent(modifier = Modifier.padding(innerPadding))
                 }

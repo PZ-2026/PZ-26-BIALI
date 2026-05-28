@@ -1,6 +1,7 @@
 package biali.fitmanager
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -73,7 +74,7 @@ fun FitBottomNav(
             selected = currentRoute == "account",
             onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") },
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = Green80,
                 selectedTextColor = Green80,

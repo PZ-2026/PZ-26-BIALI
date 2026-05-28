@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
+import biali.fitmanager.network.AssignedSessionDto
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.UserResponse
 import biali.fitmanager.network.MembershipTypeResponse
@@ -120,7 +121,8 @@ class TrainersActivity : ComponentActivity() {
                                 trainerEndDateForResign = endDate
                             },
                             currentTrainerId = state.currentTrainerId,
-                            currentTrainerEndDate = state.currentTrainerEndDate
+                            currentTrainerEndDate = state.currentTrainerEndDate,
+                            currentTrainerSessions = state.currentTrainerSessions
                         )
                     } else {
                         TrainersListContent(
@@ -365,7 +367,8 @@ fun TrainerDetailsContent(
     onPickTrainer: (UserResponse) -> Unit,
     onResignTrainer: (Int, String?) -> Unit,
     currentTrainerId: Int?,
-    currentTrainerEndDate: String?
+    currentTrainerEndDate: String?,
+    currentTrainerSessions: List<AssignedSessionDto>
 ) {
     Column(
         modifier = modifier
@@ -414,7 +417,7 @@ fun TrainerDetailsContent(
         val isCurrentTrainer = trainer.id == currentTrainerId
 
         if (isCurrentTrainer) {
-            TrainerWorkoutPlanSection()
+            TrainerWorkoutPlanSection(currentTrainerSessions)
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -444,7 +447,7 @@ fun TrainerDetailsContent(
 }
 
 @Composable
-fun TrainerWorkoutPlanSection() {
+fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
     val today = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
 
     Card(
@@ -453,25 +456,44 @@ fun TrainerWorkoutPlanSection() {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Ćwiczenie na dzień $today",
+                text = "Plan od trenera na dzień $today",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            val exercises = listOf(
-                Triple("Przysiady ze sztangą", "60 kg", "4 serie x 8 powtórzeń"),
-                Triple("Wyciskanie sztangi leżąc", "70 kg", "4 serie x 6 powtórzeń"),
-                Triple("Martwy ciąg", "100 kg", "5 serii x 5 powtórzeń"),
-                Triple("Wiosłowanie hantlą", "30 kg", "4 serie x 10 powtórzeń"),
-                Triple("Plank", "0 kg", "3 serie x 60 sekund")
-            )
+            if (sessions.isEmpty()) {
+                Text(
+                    text = "Trener jeszcze nie rozpisał planu treningowego dla Twojego karnetu.",
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            } else {
+                sessions.forEach { session ->
+                    Column(modifier = Modifier.padding(bottom = 16.dp)) {
+                        Text(text = session.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(text = "Data: ${session.date} | Status: ${session.status}", fontSize = 13.sp, color = Color.Gray)
 
-            exercises.forEach { (name, weight, details) ->
-                Column(modifier = Modifier.padding(bottom = 10.dp)) {
-                    Text(text = name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "Ciężar: $weight", fontSize = 14.sp)
-                    Text(text = "Serie i powtórzenia: $details", fontSize = 14.sp)
+                        if (session.exercises.isEmpty()) {
+                            Text(
+                                text = "Brak dodanych ćwiczeń.",
+                                fontSize = 13.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        } else {
+                            session.exercises.forEach { exercise ->
+                                val isTimeBased = exercise.exerciseName.contains("Deska", ignoreCase = true) || exercise.exerciseName.contains("Plank", ignoreCase = true)
+                                val repsLabel = if (isTimeBased) "sek." else "powt."
+                                val weightLabel = if (exercise.weight > 0) " | ${exercise.weight} kg" else ""
+                                Text(
+                                    text = "• ${exercise.exerciseName}: ${exercise.sets}x${exercise.reps} $repsLabel$weightLabel",
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

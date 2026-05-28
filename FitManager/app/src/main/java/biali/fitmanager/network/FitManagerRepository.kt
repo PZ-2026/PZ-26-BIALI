@@ -27,6 +27,9 @@ class FitManagerRepository(
     suspend fun getMe(): ApiResult<MeResponse> =
         executeBodyCall { api.getMe() }
 
+    suspend fun changeMyPassword(request: ChangePasswordRequest): ApiResult<Unit> =
+        executeVoidCall { api.changeMyPassword(request) }
+
     suspend fun getUsers(role: String? = null): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getUsers(role) }
 
@@ -44,6 +47,9 @@ class FitManagerRepository(
 
     suspend fun getTrainers(): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getTrainers() }
+
+    suspend fun getGymMembershipRevenue(): ApiResult<Double> =
+        executeBodyCall { api.getGymMembershipRevenue() }
 
     suspend fun getAllTrainers(): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getAllTrainers() }
@@ -74,6 +80,9 @@ class FitManagerRepository(
 
     suspend fun getMyMembership(): ApiResult<MembershipResponse> =
         executeBodyCall { api.getMyMembership() }
+
+    suspend fun getMemberships(userId: Int? = null): ApiResult<List<MembershipResponse>> =
+        executeBodyCall { api.getMemberships(userId) }
 
     suspend fun getMembershipTypes(): ApiResult<List<MembershipTypeResponse>> =
         executeBodyCall { api.getMembershipTypes() }
@@ -156,6 +165,10 @@ class FitManagerRepository(
 
     suspend fun getTrainerClientWorkouts(): ApiResult<List<ClientWorkoutDto>> {
         return executeBodyCall { api.getTrainerClientWorkouts() }
+    }
+
+    suspend fun getMyTrainerRevenue(): ApiResult<Double> {
+        return executeBodyCall { api.getMyTrainerRevenue() }
     }
 
     suspend fun getClientExercises(): ApiResult<List<ClientExercise>> {

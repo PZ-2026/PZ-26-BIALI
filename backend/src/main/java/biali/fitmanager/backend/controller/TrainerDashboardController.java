@@ -1,5 +1,6 @@
 package biali.fitmanager.backend.controller;
 
+import java.math.BigDecimal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,12 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.Principal;
 import java.util.List;
 
+import biali.fitmanager.backend.repository.PaymentRepository;
+
 @RestController
 @RequestMapping("/api/trainer")
 public class TrainerDashboardController {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
 
     public record UpdateProgressNoteRequest(String notes) {}
     public record CreateSessionRequest(int clientId, String title, String startTime, int durationMinutes) {}
@@ -134,5 +140,12 @@ public class TrainerDashboardController {
         List<ClientWorkoutDto> workouts = jdbcTemplate.query(sql, (rs, rowNum) -> new ClientWorkoutDto(
                 rs.getInt("id"), rs.getString("clientName"), rs.getString("exerciseName"), rs.getDouble("weight"), rs.getInt("sets"), rs.getInt("reps"), rs.getString("date"), (Integer) rs.getObject("sessionId")), email);
         return ResponseEntity.ok(workouts);
+    }
+
+    @GetMapping("/revenue")
+    public ResponseEntity<Double> getTrainerRevenue(Principal principal) {
+        String email = principal.getName();
+        BigDecimal total = paymentRepository.sumSuccessfulTrainerRentalRevenue(email);
+        return ResponseEntity.ok(total == null ? 0.0 : total.doubleValue());
     }
 }

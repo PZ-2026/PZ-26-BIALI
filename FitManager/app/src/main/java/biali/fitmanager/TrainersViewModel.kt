@@ -3,6 +3,7 @@ package biali.fitmanager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biali.fitmanager.network.ApiResult
+import biali.fitmanager.network.AssignedSessionDto
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.UserResponse
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,8 @@ data class TrainersUiState(
     val actionSuccess: String? = null,
     val currentTrainerId: Int? = null,
     val currentTrainer: UserResponse? = null,
-    val currentTrainerEndDate: String? = null
+    val currentTrainerEndDate: String? = null,
+    val currentTrainerSessions: List<AssignedSessionDto> = emptyList()
 )
 
 class TrainersViewModel : ViewModel() {
@@ -45,21 +47,50 @@ class TrainersViewModel : ViewModel() {
                                 // Fetch current trainer details
                                 when (val trainerResult = repository.getTrainerById(trainerId)) {
                                     is ApiResult.Success -> {
-                                        _state.update { it.copy(trainers = result.data, currentTrainerId = trainerId, currentTrainer = trainerResult.data, currentTrainerEndDate = trainerEnd, isLoading = false) }
+                                        when (val sessionsResult = repository.getMyAssignedSessions()) {
+                                            is ApiResult.Success -> {
+                                                _state.update {
+                                                    it.copy(
+                                                        trainers = result.data,
+                                                        currentTrainerId = trainerId,
+                                                        currentTrainer = trainerResult.data,
+                                                        currentTrainerEndDate = trainerEnd,
+                                                        currentTrainerSessions = sessionsResult.data,
+                                                        isLoading = false
+                                                    )
+                                                }
+                                            }
+                                            is ApiResult.Error -> {
+                                                _state.update {
+                                                    it.copy(
+                                                        trainers = result.data,
+                                                        currentTrainerId = trainerId,
+                                                        currentTrainer = trainerResult.data,
+                                                        currentTrainerEndDate = trainerEnd,
+                                                        currentTrainerSessions = emptyList(),
+                                                        error = "Nie udało się pobrać planu treningowego",
+                                                        isLoading = false
+                                                    )
+                                                }
+                                            }
+                                            is ApiResult.Unauthorized -> {
+                                                _state.update { it.copy(sessionExpired = true, isLoading = false) }
+                                            }
+                                        }
                                     }
                                     is ApiResult.Error -> {
-                                        _state.update { it.copy(trainers = result.data, currentTrainerId = trainerId, error = "Nie udało się pobrać danych trenera", currentTrainerEndDate = trainerEnd, isLoading = false) }
+                                        _state.update { it.copy(trainers = result.data, currentTrainerId = trainerId, error = "Nie udało się pobrać danych trenera", currentTrainerEndDate = trainerEnd, currentTrainerSessions = emptyList(), isLoading = false) }
                                     }
                                     is ApiResult.Unauthorized -> {
                                         _state.update { it.copy(sessionExpired = true, isLoading = false) }
                                     }
                                 }
                             } else {
-                                _state.update { it.copy(trainers = result.data, currentTrainerId = null, currentTrainer = null, currentTrainerEndDate = null, isLoading = false) }
+                                _state.update { it.copy(trainers = result.data, currentTrainerId = null, currentTrainer = null, currentTrainerEndDate = null, currentTrainerSessions = emptyList(), isLoading = false) }
                             }
                         }
                         is ApiResult.Error -> {
-                            _state.update { it.copy(trainers = result.data, error = "Nie udało się pobrać informacji o użytkowniku", isLoading = false) }
+                            _state.update { it.copy(trainers = result.data, error = "Nie udało się pobrać informacji o użytkowniku", currentTrainerSessions = emptyList(), isLoading = false) }
                         }
                         is ApiResult.Unauthorized -> {
                             _state.update { it.copy(sessionExpired = true, isLoading = false) }
