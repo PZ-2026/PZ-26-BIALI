@@ -71,10 +71,11 @@ class TrainerUsersActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { TrainerNavbar(onLogout = ::logout) },
-                    bottomBar = { 
+                    bottomBar = {
                         TrainerBottomNav(
+                            onNavigateToHome = ::navigateToHome,
                             onNavigateToProgress = { navigateToProgress() }
-                        ) 
+                        )
                     }
                 ) { innerPadding ->
                     TrainerUsersContent(
@@ -96,8 +97,17 @@ class TrainerUsersActivity : ComponentActivity() {
         finish()
     }
 
+    private fun navigateToHome() {
+        val intent = Intent(this, TrainerHomeActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
+    }
+
     private fun navigateToProgress() {
-        val intent = Intent(this, TrainerProgressActivity::class.java)
+        val intent = Intent(this, TrainerProgressActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
         startActivity(intent)
     }
 }
@@ -200,14 +210,14 @@ private fun RowScope.TrainerCell(text: String, weight: Float, isHeader: Boolean 
 }
 
 @Composable
-private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}) {
+private fun TrainerBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToProgress: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
     ) {
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToHome,
             label = { Text("Panel") },
             icon = { androidx.compose.material3.Icon(Icons.Filled.Home, contentDescription = "Panel") },
             colors = NavigationBarItemDefaults.colors(

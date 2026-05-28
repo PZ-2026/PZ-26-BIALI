@@ -95,14 +95,15 @@ class HomeActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { Navbar(onLogout = ::logout, balance = balance, onBalanceClick = ::navigateToWallet, userRole = userRole) },
-                    bottomBar = { 
+                    bottomBar = {
                         FitBottomNav(
                             currentRoute = "home",
                             onNavigateToHome = { /* Już tu jesteśmy */ },
                             onNavigateToTrainers = ::navigateToTrainers,
                             onNavigateToMemberships = ::navigateToMemberships,
-                                    onNavigateToProgress = ::navigateToProgress
-                        ) 
+                            onNavigateToProgress = ::navigateToProgress,
+                            onNavigateToAccount = ::navigateToAccount
+                        )
                     }
                 ) { innerPadding ->
                     MainContent(
@@ -301,6 +302,13 @@ class HomeActivity : ComponentActivity() {
 
     private fun navigateToProgress() {
         val intent = Intent(this, ProgressActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
         startActivity(intent)
     }
 }

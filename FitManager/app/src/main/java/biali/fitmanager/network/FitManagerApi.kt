@@ -46,6 +46,9 @@ interface FitManagerApi {
     @PUT("api/admin/users/{id}")
     suspend fun updateUser(@Path("id") id: Int, @Body request: UserUpsertRequest): Response<UserResponse>
 
+    @PUT("api/users/{id}")
+    suspend fun updateOwnProfile(@Path("id") id: Int, @Body request: UserUpsertRequest): Response<UserResponse>
+
     @DELETE("api/admin/users/{id}")
     suspend fun deleteUser(@Path("id") id: Int): Response<Void>
 

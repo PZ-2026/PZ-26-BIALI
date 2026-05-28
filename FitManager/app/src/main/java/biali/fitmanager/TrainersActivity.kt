@@ -98,6 +98,10 @@ class TrainersActivity : ComponentActivity() {
                                     val intent = Intent(this@TrainersActivity, ProgressActivity::class.java)
                                     startActivity(intent)
                                     finish()
+                                },
+                                onNavigateToAccount = {
+                                    val intent = Intent(this@TrainersActivity, AccountActivity::class.java)
+                                    startActivity(intent)
                                 }
                             )
                         }

@@ -107,7 +107,7 @@ class TrainerProgressActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { ProgressTopBar(onLogout = ::logout) },
-                    bottomBar = { ProgressBottomNav(onNavigateToClients = ::navigateToClients) }
+                    bottomBar = { ProgressBottomNav(onNavigateToHome = ::navigateToHome, onNavigateToClients = ::navigateToClients) }
                 ) { innerPadding ->
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
@@ -117,6 +117,13 @@ class TrainerProgressActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun navigateToHome() {
+        val intent = Intent(this, TrainerHomeActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
     }
 
     private fun navigateToClients() {
@@ -937,14 +944,14 @@ fun ClientRealWorkoutsDialog(
 }
 
 @Composable
-private fun ProgressBottomNav(onNavigateToClients: () -> Unit) {
+private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToClients: () -> Unit) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
     ) {
         NavigationBarItem(
             selected = false,
-            onClick = { /* Brak akcji */ },
+            onClick = onNavigateToHome,
             label = { Text("Panel") },
             icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") }
         )
