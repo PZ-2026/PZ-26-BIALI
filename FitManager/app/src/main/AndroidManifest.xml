@@ -35,7 +35,6 @@
         <activity android:name=".RegisterActivity" />
         <activity android:name=".MembershipsActivity" />
         <activity android:name=".WalletActivity" />
-        <activity android:name=".AccountActivity" />
         <activity android:name=".TrainerUsersActivity" />
         <activity android:name=".TrainersActivity" />
         <activity android:name=".AdminHomeActivity" />
@@ -44,5 +43,7 @@
     android:name=".TrainerProgressActivity"
     android:exported="false"
     android:theme="@style/Theme.FitManager" />
+        <activity android:name=".AccountActivity" android:exported="false" />
+        <activity android:name=".TrainerHomeActivity" android:exported="false" />
     </application>
 </manifest>

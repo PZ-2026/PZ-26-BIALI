@@ -2,6 +2,7 @@ package biali.fitmanager
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,10 +15,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -28,27 +32,35 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +71,7 @@ import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.MeResponse
 import biali.fitmanager.network.ProgressSummaryResponse
 import biali.fitmanager.network.SessionManager
+import biali.fitmanager.network.UserUpsertRequest
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.LightGreen80
 import biali.fitmanager.ui.theme.GymManagerTheme
@@ -95,7 +108,17 @@ class AccountActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
                         TopAppBar(
-                            title = { Text("Konto", fontWeight = FontWeight.Bold) }
+                            title = { Text("Konto", fontWeight = FontWeight.Bold) },
+                            navigationIcon = {
+                                IconButton(onClick = { finish() }) {
+                                    Icon(Icons.Filled.ArrowBack, contentDescription = "Wstecz")
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = Green80,
+                                titleContentColor = Color.White,
+                                navigationIconContentColor = Color.White
+                            )
                         )
                     },
                     bottomBar = {
@@ -298,14 +321,35 @@ private fun AccountScreen(
     onLogout: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    val repository = remember { FitManagerRepository() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Profile editing state
+    var editFirstName by remember { mutableStateOf("") }
+    var editLastName by remember { mutableStateOf("") }
+    var editPhoneNumber by remember { mutableStateOf("") }
+    var editPassword by remember { mutableStateOf("") }
+    var editConfirmPassword by remember { mutableStateOf("") }
+    var isSavingProfile by remember { mutableStateOf(false) }
+
+    // Password change state (main version)
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var feedback by remember { mutableStateOf<String?>(null) }
+    var savingPassword by remember { mutableStateOf(false) }
+    var passwordFeedback by remember { mutableStateOf<String?>(null) }
+
     var dialogMessage by remember { mutableStateOf<String?>(null) }
-    var saving by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-    val repository = remember { FitManagerRepository() }
+
+    // Initialize editing fields when profile loads
+    LaunchedEffect(profile) {
+        profile?.let {
+            editFirstName = it.firstName ?: ""
+            editLastName = it.lastName ?: ""
+            editPhoneNumber = it.phoneNumber ?: ""
+        }
+    }
 
     LaunchedEffect(error) {
         if (!error.isNullOrBlank()) {
@@ -320,9 +364,6 @@ private fun AccountScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Mój profil", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(text = "Dane konta, hasło i statystyki w jednym miejscu", fontSize = 15.sp, color = Color.Gray)
-
         if (loading) {
             Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Green80)
@@ -330,9 +371,11 @@ private fun AccountScreen(
         }
 
         profile?.let { me ->
+            // ---- Profile Info Card (from main) ----
             ProfileCard(me = me, trainerDisplayName = trainerDisplayName, hideBalance = me.role.equals("ADMIN", ignoreCase = true) || me.role.equals("TRAINER", ignoreCase = true))
         }
 
+        // ---- Role-specific Stats (from main) ----
         if (roleStats.isNotEmpty()) {
             Text(text = "Statystyki", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             roleStats.forEach { stat ->
@@ -340,6 +383,7 @@ private fun AccountScreen(
             }
         }
 
+        // ---- Progress Summary (from main, non-ADMIN) ----
         if (!role.equals("ADMIN", ignoreCase = true)) {
             progressSummary?.let { summary ->
                 Card(
@@ -356,6 +400,123 @@ private fun AccountScreen(
             }
         }
 
+        HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
+
+        // ---- Profile Editing Section (from our branch) ----
+        Text(
+            text = "Edytuj profil",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Green80
+        )
+
+        OutlinedTextField(
+            value = editFirstName,
+            onValueChange = { editFirstName = it },
+            label = { Text("Imię") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = editLastName,
+            onValueChange = { editLastName = it },
+            label = { Text("Nazwisko") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = editPhoneNumber,
+            onValueChange = { editPhoneNumber = it },
+            label = { Text("Numer telefonu") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+        )
+
+        Text(
+            text = "Pozostaw hasło puste, jeśli nie chcesz go zmieniać.",
+            fontSize = 13.sp,
+            color = Color.Gray
+        )
+
+        OutlinedTextField(
+            value = editPassword,
+            onValueChange = { editPassword = it },
+            label = { Text("Nowe hasło (opcjonalnie)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        )
+
+        OutlinedTextField(
+            value = editConfirmPassword,
+            onValueChange = { editConfirmPassword = it },
+            label = { Text("Potwierdź nowe hasło") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        )
+
+        Button(
+            onClick = {
+                if (editPassword != editConfirmPassword) {
+                    dialogMessage = "Hasła nie są zgodne."
+                    return@Button
+                }
+
+                isSavingProfile = true
+                coroutineScope.launch {
+                    val request = UserUpsertRequest(
+                        email = profile?.email ?: "",
+                        firstName = editFirstName,
+                        lastName = editLastName,
+                        phoneNumber = editPhoneNumber.ifBlank { null },
+                        password = editPassword.ifBlank { null },
+                        role = profile?.role ?: SessionManager.getRole() ?: ""
+                    )
+
+                    when (val result = repository.updateOwnProfile(profile?.id ?: 0, request)) {
+                        is ApiResult.Success -> {
+                            Toast.makeText(context, "Dane zaktualizowane pomyślnie.", Toast.LENGTH_SHORT).show()
+                            if (editPassword.isNotBlank()) {
+                                onLogout()
+                                return@launch
+                            }
+                            editPassword = ""
+                            editConfirmPassword = ""
+                        }
+                        is ApiResult.Unauthorized -> {
+                            dialogMessage = "Sesja wygasła. Zaloguj się ponownie."
+                        }
+                        is ApiResult.Error -> {
+                            dialogMessage = "Błąd: ${result.message}"
+                        }
+                    }
+                    isSavingProfile = false
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            enabled = !isSavingProfile,
+            colors = ButtonDefaults.buttonColors(containerColor = Green80)
+        ) {
+            if (isSavingProfile) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Zapisz zmiany w profilu", fontSize = 16.sp)
+            }
+        }
+
+        HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
+
+        // ---- Password Change Section (from main) ----
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White)
@@ -398,15 +559,15 @@ private fun AccountScreen(
                             return@Button
                         }
 
-                        saving = true
-                        feedback = null
+                        savingPassword = true
+                        passwordFeedback = null
                         coroutineScope.launch {
                             when (val result = repository.changeMyPassword(ChangePasswordRequest(trimmedCurrent, trimmedNew))) {
                                 is ApiResult.Success -> {
                                     currentPassword = ""
                                     newPassword = ""
                                     confirmPassword = ""
-                                    feedback = "Hasło zostało zmienione."
+                                    passwordFeedback = "Hasło zostało zmienione."
                                 }
                                 is ApiResult.Unauthorized -> {
                                     dialogMessage = "Sesja wygasła, zaloguj się ponownie."
@@ -422,29 +583,34 @@ private fun AccountScreen(
                                     }
                                 }
                             }
-                            saving = false
+                            savingPassword = false
                         }
                     },
-                    enabled = !saving,
+                    enabled = !savingPassword,
                     colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    androidx.compose.material3.Icon(Icons.Filled.Lock, contentDescription = null)
+                    Icon(Icons.Filled.Lock, contentDescription = null)
                     Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                    Text(if (saving) "Zapisywanie..." else "Zmień hasło")
+                    Text(if (savingPassword) "Zapisywanie..." else "Zmień hasło")
                 }
 
-                feedback?.let { Text(text = it, color = Color(0xFF2E7D32)) }
+                passwordFeedback?.let { Text(text = it, color = Color(0xFF2E7D32)) }
             }
         }
 
-        Button(
+        // ---- Logout Button ----
+        OutlinedButton(
             onClick = onLogout,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F), contentColor = Color.White),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
         ) {
-            Text("Wyloguj się")
+            Text("Wyloguj się", fontSize = 16.sp)
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     dialogMessage?.let { message ->
@@ -522,7 +688,7 @@ private fun AccountBottomNav(
                 selected = false,
                 onClick = { navigateByRole(context, role, "home") },
                 label = { Text("Panel") },
-                icon = { androidx.compose.material3.Icon(Icons.Filled.Home, contentDescription = "Panel") },
+                icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Green80,
                     selectedTextColor = Green80,
@@ -533,13 +699,13 @@ private fun AccountBottomNav(
                 selected = false,
                 onClick = { navigateByRole(context, role, "progress") },
                 label = { Text("Postęp") },
-                icon = { androidx.compose.material3.Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
+                icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
             )
             NavigationBarItem(
                 selected = true,
                 onClick = onCurrentScreen,
                 label = { Text("Konto") },
-                icon = { androidx.compose.material3.Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
+                icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Green80,
                     selectedTextColor = Green80,

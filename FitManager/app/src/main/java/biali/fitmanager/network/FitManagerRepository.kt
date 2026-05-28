@@ -39,6 +39,9 @@ class FitManagerRepository(
     suspend fun updateUser(id: Int, request: UserUpsertRequest): ApiResult<UserResponse> =
         executeBodyCall { api.updateUser(id, request) }
 
+    suspend fun updateOwnProfile(id: Int, request: UserUpsertRequest): ApiResult<UserResponse> =
+        executeBodyCall { api.updateOwnProfile(id, request) }
+
     suspend fun deleteUser(id: Int): ApiResult<Unit> =
         executeVoidCall { api.deleteUser(id) }
 

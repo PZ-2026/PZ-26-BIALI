@@ -154,6 +154,13 @@ class AdminHomeActivity : ComponentActivity() {
         return role.equals("ADMIN", ignoreCase = true)
     }
 
+    private fun navigateToAccount() {
+        val intent = Intent(this, AccountActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
+    }
+
     private fun logout() {
         SessionManager.clearSession()
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -161,11 +168,6 @@ class AdminHomeActivity : ComponentActivity() {
         }
         startActivity(intent)
         finish()
-    }
-
-    private fun navigateToAccount() {
-        val intent = Intent(this, AccountActivity::class.java)
-        startActivity(intent)
     }
 }
 
@@ -299,7 +301,9 @@ private fun AdminDashboardScreen(
 }
 
 @Composable
-private fun AdminBottomNav(onNavigateToAccount: () -> Unit = {}) {
+private fun AdminBottomNav(
+    onNavigateToAccount: () -> Unit = {}
+) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -331,7 +335,12 @@ private fun AdminBottomNav(onNavigateToAccount: () -> Unit = {}) {
             selected = false,
             onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") }
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
         )
     }
 }

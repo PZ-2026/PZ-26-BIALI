@@ -60,9 +60,11 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/users/*/topup", "/api/users/*/purchase-membership/*").authenticated()
+                .requestMatchers(HttpMethod.PUT, "/api/users/*").authenticated()
                 .requestMatchers("/api/auth/login", "/api/auth/register", "/error", "/api/membership-types").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/users/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/users/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/users/**").hasRole("ADMIN")
                 .requestMatchers("/api/trainer/**").hasRole("TRAINER")
                 .requestMatchers("/api/me").authenticated()
                 .requestMatchers("/api/memberships/**", "/api/sessions/**", "/api/reservations/**").authenticated()

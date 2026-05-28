@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -71,11 +72,12 @@ class TrainerUsersActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { TrainerNavbar(onLogout = ::logout) },
-                    bottomBar = { 
+                    bottomBar = {
                         TrainerBottomNav(
+                            onNavigateToHome = ::navigateToHome,
                             onNavigateToProgress = { navigateToProgress() },
                             onNavigateToAccount = { navigateToAccount() }
-                        ) 
+                        )
                     }
                 ) { innerPadding ->
                     TrainerUsersContent(
@@ -97,13 +99,24 @@ class TrainerUsersActivity : ComponentActivity() {
         finish()
     }
 
+    private fun navigateToHome() {
+        val intent = Intent(this, TrainerHomeActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        startActivity(intent)
+    }
+
     private fun navigateToProgress() {
-        val intent = Intent(this, TrainerProgressActivity::class.java)
+        val intent = Intent(this, TrainerProgressActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
         startActivity(intent)
     }
 
     private fun navigateToAccount() {
-        val intent = Intent(this, AccountActivity::class.java)
+        val intent = Intent(this, AccountActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
         startActivity(intent)
     }
 }
@@ -121,6 +134,7 @@ fun TrainerNavbar(onLogout: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("230.00zł", fontSize = 16.sp)
             }
         },
         actions = {
@@ -205,16 +219,27 @@ private fun RowScope.TrainerCell(text: String, weight: Float, isHeader: Boolean 
 }
 
 @Composable
-private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}, onNavigateToAccount: () -> Unit = {}) {
+private fun TrainerBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToProgress: () -> Unit = {}, onNavigateToAccount: () -> Unit = {}) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
     ) {
         NavigationBarItem(
             selected = false,
-            onClick = { },
+            onClick = onNavigateToHome,
             label = { Text("Panel") },
             icon = { androidx.compose.material3.Icon(Icons.Filled.Home, contentDescription = "Panel") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
+        )
+        NavigationBarItem(
+            selected = true,
+            onClick = { },
+            label = { Text("Trener") },
+            icon = { androidx.compose.material3.Icon(Icons.Filled.Person, contentDescription = "Trener") },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = Green80,
                 selectedTextColor = Green80,
@@ -231,7 +256,7 @@ private fun TrainerBottomNav(onNavigateToProgress: () -> Unit = {}, onNavigateTo
             selected = false,
             onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { androidx.compose.material3.Icon(Icons.Filled.Person, contentDescription = "Konto") }
+            icon = { androidx.compose.material3.Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }
         )
     }
 }
