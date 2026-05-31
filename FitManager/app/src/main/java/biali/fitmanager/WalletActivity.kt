@@ -1,6 +1,7 @@
 package biali.fitmanager
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import biali.fitmanager.ui.theme.GymManagerTheme
+import biali.fitmanager.ui.theme.Green80
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +45,27 @@ class WalletActivity : ComponentActivity() {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Wstecz")
                         }
                     })
+                }, bottomBar = {
+                    FitBottomNav(
+                        currentRoute = "account",
+                        onNavigateToHome = {
+                            startActivity(Intent(this@WalletActivity, HomeActivity::class.java))
+                            finish()
+                        },
+                        onNavigateToTrainers = {
+                            startActivity(Intent(this@WalletActivity, TrainersActivity::class.java))
+                            finish()
+                        },
+                        onNavigateToMemberships = {
+                            startActivity(Intent(this@WalletActivity, MembershipsActivity::class.java))
+                            finish()
+                        },
+                        onNavigateToProgress = {
+                            startActivity(Intent(this@WalletActivity, ProgressActivity::class.java))
+                            finish()
+                        },
+                        onNavigateToAccount = { }
+                    )
                 }) { innerPadding ->
                     WalletContent(modifier = Modifier.padding(innerPadding))
                 }
@@ -88,114 +111,137 @@ fun WalletContent(modifier: Modifier = Modifier) {
             CircularProgressIndicator()
         }
     } else {
-        Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(text = "BLIK", fontSize = 40.sp, fontWeight = FontWeight.Bold)
-            Text(
-                text = "Aktualne saldo: ${"%.2f".format(balance)} zł",
-                fontSize = 18.sp
-            )
-            FlowRow(
+        Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                val amounts = listOf(10, 20, 50, 100, 200)
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = "Stan konta", fontSize = 14.sp, color = Color(0xFF546E7A))
+                    Text(
+                        text = "${"%.2f".format(balance)} zł",
+                        fontSize = 34.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Green80
+                    )
+                    Text(text = "Doładuj środki szybko i wygodnie", fontSize = 13.sp, color = Color(0xFF607D8B))
+                }
+            }
 
-                amounts.forEach { a ->
-                    Button(
-                        onClick = {
-                            amountText = String.format(
-                                java.util.Locale.getDefault(),
-                                "%.2f",
-                                a.toDouble()
-                            )
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Black,
-                            contentColor = Color.White
-                        )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(text = "Szybkie kwoty", fontWeight = FontWeight.Bold, color = Green80)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(text = "${a} zł")
+                        val amounts = listOf(10, 20, 50, 100, 200)
+
+                        amounts.forEach { a ->
+                            Button(
+                                onClick = {
+                                    amountText = String.format(
+                                        java.util.Locale.getDefault(),
+                                        "%.2f",
+                                        a.toDouble()
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFEAF8F1),
+                                    contentColor = Green80
+                                )
+                            ) {
+                                Text(text = "${a} zł")
+                            }
+                        }
                     }
                 }
             }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFDFDFD)),
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = { amountText = it },
+                        label = { Text("Kwota do dodania") },
+                        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-        OutlinedTextField(
-            value = amountText,
-            onValueChange = { amountText = it },
-            label = { Text("Kwota do dodania") },
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-
-        Button(onClick = {
-            val parsed = amountText.replace(',', '.').toDoubleOrNull()
-            if (parsed == null || parsed <= 0.0) {
-                message = "Wprowadź poprawną kwotę"
-                return@Button
-            }
-
-            // perform server top-up
-            val token = SessionManager.getToken()
-            val maybeId = token?.let { SessionManager.resolveUserIdFromToken(it) }
-
-            // use coroutineScope to call suspend functions
-            coroutineScope.launch {
-                var userId: Int? = maybeId
-                if (userId == null) {
-                    // fallback: try to get current user from API
-                    when (val meRes = repository.getMe()) {
-                        is ApiResult.Success -> userId = meRes.data.id
-                        is ApiResult.Error -> {
-                            message = meRes.message
+                    Button(onClick = {
+                        val parsed = amountText.replace(',', '.').toDoubleOrNull()
+                        if (parsed == null || parsed <= 0.0) {
+                            message = "Wprowadź poprawną kwotę"
+                            return@Button
                         }
-                        is ApiResult.Unauthorized -> {
-                            message = "Brak autoryzacji"
-                        }
-                    }
-                }
 
-                if (userId == null) return@launch
+                        val token = SessionManager.getToken()
+                        val maybeId = token?.let { SessionManager.resolveUserIdFromToken(it) }
 
-                when (val res = repository.topUpUser(userId, TopUpRequest(amount = parsed))) {
-                    is ApiResult.Success -> {
-                        // on success, fetch fresh user info to get updated balance
-                        when (val updated = repository.getMe()) {
-                            is ApiResult.Success -> {
-                                val serverBalance = updated.data.balance
-                                if (serverBalance != null) {
-                                    SessionManager.saveBalance(serverBalance)
-                                    balance = serverBalance
-                                } else {
-                                    // fallback: increment locally
-                                    SessionManager.changeBalanceBy(parsed)
-                                    balance = SessionManager.getBalance()
+                        coroutineScope.launch {
+                            var userId: Int? = maybeId
+                            if (userId == null) {
+                                when (val meRes = repository.getMe()) {
+                                    is ApiResult.Success -> userId = meRes.data.id
+                                    is ApiResult.Error -> {
+                                        message = meRes.message
+                                    }
+                                    is ApiResult.Unauthorized -> {
+                                        message = "Brak autoryzacji"
+                                    }
                                 }
                             }
-                            else -> {
-                                // fallback: increment locally
-                                SessionManager.changeBalanceBy(parsed)
-                                balance = SessionManager.getBalance()
+
+                            if (userId == null) return@launch
+
+                            when (val res = repository.topUpUser(userId, TopUpRequest(amount = parsed))) {
+                                is ApiResult.Success -> {
+                                    when (val updated = repository.getMe()) {
+                                        is ApiResult.Success -> {
+                                            val serverBalance = updated.data.balance
+                                            if (serverBalance != null) {
+                                                SessionManager.saveBalance(serverBalance)
+                                                balance = serverBalance
+                                            } else {
+                                                SessionManager.changeBalanceBy(parsed)
+                                                balance = SessionManager.getBalance()
+                                            }
+                                        }
+                                        else -> {
+                                            SessionManager.changeBalanceBy(parsed)
+                                            balance = SessionManager.getBalance()
+                                        }
+                                    }
+                                    amountText = ""
+                                    message = "Saldo zasilone o ${String.format(java.util.Locale.getDefault(), "%.2f", parsed)} zł"
+                                }
+                                is ApiResult.Error -> {
+                                    message = res.message
+                                }
+                                is ApiResult.Unauthorized -> {
+                                    message = "Brak autoryzacji"
+                                }
                             }
                         }
-                        amountText = ""
-                        message = "Saldo zasilone o ${String.format(java.util.Locale.getDefault(), "%.2f", parsed)} zł"
-                    }
-                        is ApiResult.Error -> {
-                            message = res.message
-                        }
-                    is ApiResult.Unauthorized -> {
-                        message = "Brak autoryzacji"
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)) {
+                        Text("Zasil konto")
                     }
                 }
             }
-        }, modifier = Modifier.fillMaxWidth()) {
-            Text("Zasil konto")
-        }
 
             message?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary)

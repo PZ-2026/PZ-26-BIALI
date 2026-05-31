@@ -44,6 +44,9 @@ import biali.fitmanager.network.UserResponse
 import biali.fitmanager.ui.theme.GymManagerTheme
 import biali.fitmanager.ui.theme.LightGreen80
 
+const val EXTRA_PLAN_CLIENT_ID = "PLAN_CLIENT_ID"
+const val EXTRA_PLAN_CLIENT_NAME = "PLAN_CLIENT_NAME"
+
 // TODO: Docelowo przenieść te modele do osobnego pliku (np. w paczce network) 
 // i pobierać je z backendu (repozytorium).
 data class ClientProgressLog(
@@ -96,6 +99,8 @@ class TrainerProgressActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val viewModel = ViewModelProvider(this)[TrainerProgressViewModel::class.java]
+        val initialPlanClientId = intent.getIntExtra(EXTRA_PLAN_CLIENT_ID, -1).takeIf { it > 0 }
+        val initialPlanClientName = intent.getStringExtra(EXTRA_PLAN_CLIENT_NAME)
 
         setContent {
             GymManagerTheme {
@@ -113,7 +118,9 @@ class TrainerProgressActivity : ComponentActivity() {
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
                         state = state,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        initialPlanClientId = initialPlanClientId,
+                        initialPlanClientName = initialPlanClientName
                     )
                 }
             }
@@ -171,19 +178,28 @@ fun ProgressTopBar(onLogout: () -> Unit) {
 fun ProgressContent(
     modifier: Modifier = Modifier,
     state: TrainerProgressUiState,
-    viewModel: TrainerProgressViewModel
+    viewModel: TrainerProgressViewModel,
+    initialPlanClientId: Int? = null,
+    initialPlanClientName: String? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Postępy, 1 = Treningi
     var selectedSubTab by remember { mutableIntStateOf(0) } // Podzakładki treningów
 
     var expandedFilter by remember { mutableStateOf(false) }
     var selectedFilterName by remember { mutableStateOf<String?>(null) }
-    val uniqueClients = state.trainingSessions.mapNotNull { it.clientName }.distinct().sorted()
+    val uniqueClients = state.clients
+        .map { "${it.firstName} ${it.lastName}".trim() }
+        .distinct()
+        .sorted()
 
     // Grupowanie pomiarów po imieniu klienta
     val logsByClient = state.progressLogs.groupBy { it.clientName }
+    val progressClients = state.clients.map { client ->
+        val fullName = "${client.firstName} ${client.lastName}".trim()
+        fullName to logsByClient[fullName].orEmpty()
+    }
     var showEditNoteDialog by remember { mutableStateOf<Pair<Int, String>?>(null) }
-    var showSessionDialog by remember { mutableStateOf(false) }
+    var showSessionDialog by remember { mutableStateOf(initialPlanClientId != null) }
     var selectedSessionForExercise by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var selectedChartExercise by remember { mutableStateOf<String?>(null) }
     var selectedSessionForExecution by remember { mutableStateOf<ClientTrainingSession?>(null) }
@@ -195,7 +211,7 @@ fun ProgressContent(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            StatBox("Podopieczni", logsByClient.keys.size.toString())
+            StatBox("Podopieczni", state.clients.size.toString())
             StatBox("Treningi", state.trainingSessions.size.toString())
             StatBox("Pomiary", state.progressLogs.size.toString())
         }
@@ -222,7 +238,25 @@ fun ProgressContent(
             state.error?.let { Text(text = it, color = Color.Red, modifier = Modifier.padding(8.dp)) }
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(logsByClient.entries.toList()) { (clientName, logs) ->
+                if (progressClients.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Text(
+                                text = "Brak przypisanych podopiecznych.",
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                textAlign = TextAlign.Center,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                items(progressClients) { (clientName, logs) ->
                     ClientProgressDashboardCard(
                         clientName = clientName, 
                         logs = logs,
@@ -351,6 +385,8 @@ fun ProgressContent(
         if (showSessionDialog) {
             AddSessionDialog(
                 clients = state.clients,
+                initialClientId = initialPlanClientId,
+                initialClientName = initialPlanClientName,
                 onDismiss = { showSessionDialog = false },
                 onSubmit = { clientId, title, startTime, duration ->
                     viewModel.addSession(clientId, title, startTime, duration)
@@ -434,7 +470,7 @@ fun ClientProgressDashboardCard(
                     Column {
                         Text(text = clientName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         val daysAgo = latestLog?.logDate?.let { getDaysAgoText(it) } ?: ""
-                        Text(text = "Ostatni pomiar: ${latestLog?.logDate ?: "Brak"} $daysAgo", fontSize = 12.sp, color = Color.Gray)
+                        Text(text = if (latestLog != null) "Ostatni pomiar: ${latestLog.logDate} $daysAgo" else "Brak pomiarów", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
                 if (latestLog != null) {
@@ -446,6 +482,13 @@ fun ClientProgressDashboardCard(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(text = "Progresja wagi", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
                 WeightLineChart(logs = chronologicalLogs)
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Ten podopieczny nie ma jeszcze żadnych pomiarów.",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
             }
 
             if (latestLog?.notes != null) {
@@ -662,11 +705,13 @@ fun SessionExecutionDialog(
 @Composable
 fun AddSessionDialog(
     clients: List<UserResponse>,
+    initialClientId: Int? = null,
+    initialClientName: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (clientId: Int, title: String, startTime: String, duration: Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var selectedClient by remember { mutableStateOf<UserResponse?>(clients.firstOrNull()) }
+    var selectedClient by remember { mutableStateOf<UserResponse?>(null) }
     var title by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
     var durationStr by remember { mutableStateOf("") }
@@ -674,6 +719,14 @@ fun AddSessionDialog(
 
     var showDatePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
+
+    LaunchedEffect(clients, initialClientId, initialClientName) {
+        selectedClient = when {
+            initialClientId != null -> clients.firstOrNull { it.id == initialClientId } ?: selectedClient ?: clients.firstOrNull()
+            !initialClientName.isNullOrBlank() -> clients.firstOrNull { "${it.firstName} ${it.lastName}".trim().equals(initialClientName, ignoreCase = true) } ?: selectedClient ?: clients.firstOrNull()
+            else -> selectedClient ?: clients.firstOrNull()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -966,8 +1019,8 @@ private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToCli
         NavigationBarItem(
             selected = false,
             onClick = onNavigateToClients,
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
+            label = { Text("Podopieczni") },
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") }
         )
         NavigationBarItem(
             selected = true,

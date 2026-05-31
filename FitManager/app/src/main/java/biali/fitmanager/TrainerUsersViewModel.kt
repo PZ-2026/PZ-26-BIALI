@@ -2,6 +2,7 @@ package biali.fitmanager
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import biali.fitmanager.ClientTrainingSession
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.UserResponse
@@ -14,7 +15,8 @@ data class TrainerUsersUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val sessionExpired: Boolean = false,
-    val clients: List<UserResponse> = emptyList()
+    val clients: List<UserResponse> = emptyList(),
+    val trainingSessions: List<ClientTrainingSession> = emptyList()
 )
 
 class TrainerUsersViewModel : ViewModel() {
@@ -38,10 +40,29 @@ class TrainerUsersViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
 
-            when (val result = repository.getMyTrainerClients()) {
-                is ApiResult.Success -> _state.update { it.copy(isLoading = false, clients = result.data, error = null) }
-                is ApiResult.Unauthorized -> _state.update { it.copy(isLoading = false, sessionExpired = true) }
-                is ApiResult.Error -> _state.update { it.copy(isLoading = false, error = result.message) }
+            val clientsResult = repository.getMyTrainerClients()
+            val sessionsResult = repository.getTrainerSessions()
+
+            when {
+                clientsResult is ApiResult.Unauthorized || sessionsResult is ApiResult.Unauthorized -> {
+                    _state.update { it.copy(isLoading = false, sessionExpired = true) }
+                }
+                else -> {
+                    val errorMessage = when {
+                        clientsResult is ApiResult.Error -> clientsResult.message
+                        sessionsResult is ApiResult.Error -> sessionsResult.message
+                        else -> null
+                    }
+
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            clients = (clientsResult as? ApiResult.Success)?.data ?: emptyList(),
+                            trainingSessions = (sessionsResult as? ApiResult.Success)?.data ?: emptyList(),
+                            error = errorMessage
+                        )
+                    }
+                }
             }
         }
     }

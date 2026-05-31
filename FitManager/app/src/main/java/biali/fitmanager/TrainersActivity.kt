@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -85,27 +86,25 @@ class TrainersActivity : ComponentActivity() {
                     },
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     bottomBar = {
-                        if (!state.showDetails) {
-                            FitBottomNav(
-                                currentRoute = "trainers",
-                                onNavigateToHome = { finish() },
-                                onNavigateToTrainers = { /* Już tu jesteśmy */ },
-                                onNavigateToMemberships = {
-                                    val intent = Intent(this@TrainersActivity, MembershipsActivity::class.java)
-                                    startActivity(intent)
-                                    finish()
-                                },
-                                onNavigateToProgress = {
-                                    val intent = Intent(this@TrainersActivity, ProgressActivity::class.java)
-                                    startActivity(intent)
-                                    finish()
-                                },
-                                onNavigateToAccount = {
-                                    val intent = Intent(this@TrainersActivity, AccountActivity::class.java)
-                                    startActivity(intent)
-                                }
-                            )
-                        }
+                        FitBottomNav(
+                            currentRoute = "trainers",
+                            onNavigateToHome = { finish() },
+                            onNavigateToTrainers = { /* Już tu jesteśmy */ },
+                            onNavigateToMemberships = {
+                                val intent = Intent(this@TrainersActivity, MembershipsActivity::class.java)
+                                startActivity(intent)
+                                finish()
+                            },
+                            onNavigateToProgress = {
+                                val intent = Intent(this@TrainersActivity, ProgressActivity::class.java)
+                                startActivity(intent)
+                                finish()
+                            },
+                            onNavigateToAccount = {
+                                val intent = Intent(this@TrainersActivity, AccountActivity::class.java)
+                                startActivity(intent)
+                            }
+                        )
                     }
                 ) { innerPadding ->
                     if (state.showDetails && state.selectedTrainer != null) {
@@ -273,22 +272,36 @@ fun TrainersListContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val title = if (currentTrainer != null) {
+                    val endPart = formattedEndDate?.let { " do $it" } ?: ""
+                    "Twoim trenerem jest ${currentTrainer.firstName} ${currentTrainer.lastName}$endPart r."
+                } else {
+                    "Wybierz swojego trenera"
+                }
 
-        val title = if (currentTrainer != null) {
-            val endPart = formattedEndDate?.let { " do $it" } ?: ""
-            "Twoim trenerem jest ${currentTrainer.firstName} ${currentTrainer.lastName}$endPart r."
-        } else {
-            "Wybierz swojego trenera"
+                Text(
+                    text = title,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Green80
+                )
+                Text(
+                    text = "Nowoczesna lista trenerów z szybkim wyborem i szczegółami.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF546E7A)
+                )
+            }
         }
-
-        Text(
-            text = title,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
 
         if (isLoading && trainers.isEmpty()) {
             Box(
@@ -330,9 +343,10 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Green80 else Color.White,
+            containerColor = if (isSelected) Color(0xFFEAF8F1) else Color.White,
             contentColor = if (isSelected) Color.White else Color.Black
         )
     ) {
@@ -340,19 +354,35 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "${trainer.firstName} ${trainer.lastName}",
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold,
+                    color = Green80
                 )
-                Text(text = trainer.email, fontSize = 14.sp)
+                Text(text = trainer.email, fontSize = 14.sp, color = Color(0xFF546E7A))
+                trainer.phoneNumber?.takeIf { it.isNotBlank() }?.let {
+                    Text(text = "Telefon: $it", fontSize = 13.sp, color = Color(0xFF607D8B))
+                }
                 Text(
                     text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    color = Color(0xFF607D8B)
                 )
             }
-            Text("Szczegóły >", fontSize = 14.sp)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = if (isSelected) Green80 else Color(0xFFEAF3FF)),
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text(
+                    text = if (isSelected) "Wybrany" else "Szczegóły",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) Color.White else Color(0xFF1E88E5)
+                )
+            }
         }
     }
 }
@@ -374,51 +404,78 @@ fun TrainerDetailsContent(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(20.dp)
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Szczegóły trenera",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Green80
+                )
                 Text(
                     text = "${trainer.firstName} ${trainer.lastName}",
                     fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Green80
+                )
+                Text(text = "Email: ${trainer.email}", fontSize = 15.sp, color = Color(0xFF546E7A))
+                trainer.phoneNumber?.takeIf { it.isNotBlank() }?.let {
+                    Text(text = "Telefon: $it", fontSize = 15.sp, color = Color(0xFF607D8B))
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF8F1)),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Green80
+                    )
+                }
+            }
+        }
+
+        if (successMessage != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF8F1)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = successMessage,
+                    modifier = Modifier.padding(12.dp),
+                    color = Green80,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Email: ${trainer.email}", fontSize = 16.sp)
-                trainer.phoneNumber?.let {
-                    if (it.isNotBlank()) {
-                        Text(text = "Telefon: $it", fontSize = 16.sp)
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+
+        if (error != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
                 Text(
-                    text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
-                    fontSize = 16.sp,
+                    text = error,
+                    modifier = Modifier.padding(12.dp),
+                    color = Color(0xFFD32F2F),
                     fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        if (successMessage != null) {
-            Text(text = successMessage, color = Green80, fontWeight = FontWeight.Bold)
-        }
-
-        if (error != null) {
-            Text(text = error, color = Color.Red)
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         val isCurrentTrainer = trainer.id == currentTrainerId
 
         if (isCurrentTrainer) {
             TrainerWorkoutPlanSection(currentTrainerSessions)
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
         if (isLoading) {
@@ -435,7 +492,8 @@ fun TrainerDetailsContent(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isCurrentTrainer) Color.Red else Green80
-                )
+                ),
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Text(
                     text = if (isCurrentTrainer) "Zrezygnuj z trenera" else "Wybierz tego trenera",
@@ -452,45 +510,59 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(20.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = "Plan od trenera na dzień $today",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 12.dp)
+                color = Green80
             )
 
             if (sessions.isEmpty()) {
-                Text(
-                    text = "Trener jeszcze nie rozpisał planu treningowego dla Twojego karnetu.",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(
+                        text = "Trener jeszcze nie rozpisał planu treningowego dla Twojego karnetu.",
+                        fontSize = 14.sp,
+                        color = Color(0xFF546E7A),
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
             } else {
                 sessions.forEach { session ->
-                    Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                        Text(text = session.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(text = "Data: ${session.date} | Status: ${session.status}", fontSize = 13.sp, color = Color.Gray)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(text = session.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Green80)
+                            Text(text = "Data: ${session.date} | Status: ${session.status}", fontSize = 13.sp, color = Color(0xFF607D8B))
 
-                        if (session.exercises.isEmpty()) {
-                            Text(
-                                text = "Brak dodanych ćwiczeń.",
-                                fontSize = 13.sp,
-                                color = Color.Gray,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        } else {
-                            session.exercises.forEach { exercise ->
-                                val isTimeBased = exercise.exerciseName.contains("Deska", ignoreCase = true) || exercise.exerciseName.contains("Plank", ignoreCase = true)
-                                val repsLabel = if (isTimeBased) "sek." else "powt."
-                                val weightLabel = if (exercise.weight > 0) " | ${exercise.weight} kg" else ""
+                            if (session.exercises.isEmpty()) {
                                 Text(
-                                    text = "• ${exercise.exerciseName}: ${exercise.sets}x${exercise.reps} $repsLabel$weightLabel",
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.padding(top = 4.dp)
+                                    text = "Brak dodanych ćwiczeń.",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF607D8B)
                                 )
+                            } else {
+                                session.exercises.forEach { exercise ->
+                                    val isTimeBased = exercise.exerciseName.contains("Deska", ignoreCase = true) || exercise.exerciseName.contains("Plank", ignoreCase = true)
+                                    val repsLabel = if (isTimeBased) "sek." else "powt."
+                                    val weightLabel = if (exercise.weight > 0) " | ${exercise.weight} kg" else ""
+                                    Text(
+                                        text = "• ${exercise.exerciseName}: ${exercise.sets}x${exercise.reps} $repsLabel$weightLabel",
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF37474F)
+                                    )
+                                }
                             }
                         }
                     }

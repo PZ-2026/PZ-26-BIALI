@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -103,7 +102,6 @@ class TrainerHomeActivity : ComponentActivity() {
                     TrainerHomeContent(
                         modifier = Modifier.padding(innerPadding),
                         state = state,
-                        onRefresh = viewModel::refresh,
                         onNavigateToClients = ::navigateToClients,
                         onNavigateToProgress = ::navigateToProgress
                     )
@@ -185,7 +183,6 @@ private fun TrainerHomeTopBar(onLogout: () -> Unit) {
 private fun TrainerHomeContent(
     modifier: Modifier = Modifier,
     state: TrainerHomeUiState,
-    onRefresh: () -> Unit,
     onNavigateToClients: () -> Unit,
     onNavigateToProgress: () -> Unit
 ) {
@@ -198,20 +195,7 @@ private fun TrainerHomeContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Mój panel", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(text = "Witaj ${state.displayName}!", fontSize = 16.sp)
-
-        // Refresh button
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onRefresh,
-                colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
-            ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Odśwież")
-            }
-        }
 
         // Messages
         state.error?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
@@ -490,8 +474,8 @@ private fun TrainerHomeBottomNav(
         NavigationBarItem(
             selected = false,
             onClick = onNavigateToClients,
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
+            label = { Text("Podopieczni") },
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") }
         )
         NavigationBarItem(
             selected = false,

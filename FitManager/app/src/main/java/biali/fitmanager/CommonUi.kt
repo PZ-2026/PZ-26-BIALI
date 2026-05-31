@@ -83,3 +83,52 @@ fun FitBottomNav(
         )
     }
 }
+
+@Composable
+fun AdminBottomNav(
+    currentRoute: String,
+    onNavigateToPanel: () -> Unit,
+    onNavigateToTrainers: () -> Unit,
+    onNavigateToProgress: () -> Unit,
+    onNavigateToAccount: () -> Unit
+) {
+    NavigationBar(
+        containerColor = Color.White,
+        tonalElevation = 8.dp
+    ) {
+        NavigationBarItem(
+            selected = currentRoute == "panel",
+            onClick = onNavigateToPanel,
+            label = { Text("Panel") },
+            icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
+        )
+        NavigationBarItem(
+            selected = currentRoute == "trainers",
+            onClick = onNavigateToTrainers,
+            label = { Text("Podopieczni") },
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") }
+        )
+        NavigationBarItem(
+            selected = currentRoute == "progress",
+            onClick = onNavigateToProgress,
+            label = { Text("Postęp") },
+            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
+        )
+        NavigationBarItem(
+            selected = currentRoute == "account",
+            onClick = onNavigateToAccount,
+            label = { Text("Konto") },
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
+        )
+    }
+}

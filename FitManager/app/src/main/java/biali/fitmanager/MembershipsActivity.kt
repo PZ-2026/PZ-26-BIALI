@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -110,13 +111,27 @@ class MembershipsActivity : ComponentActivity() {
             loading = false
         }
 
-        Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-            Text(
-                text = "Wybierz karnet",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+        Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Wybierz karnet",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Green80
+                    )
+                    Text(
+                        text = "Nowoczesne pakiety z czytelnym opisem i szybkim zakupem.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF546E7A)
+                    )
+                }
+            }
 
             // snackbar host
             SnackbarHost(hostState = snackbarHostState)
@@ -295,18 +310,35 @@ fun MembershipsTopBar(onBack: () -> Unit) {
 fun MembershipCard(type: MembershipTypeResponse, onPurchase: (MembershipTypeResponse) -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = type.name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Cena: ${type.price} zł", fontSize = 16.sp)
-            Text(text = "Czas trwania: ${type.durationDays} dni", fontSize = 16.sp)
-            type.description?.let {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = it, fontSize = 14.sp, color = Color.Gray)
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text = type.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Green80)
+                    Text(text = "${type.durationDays} dni", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF37474F))
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF8F1)),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = "${String.format(Locale.getDefault(), "%.2f", type.price)} zł",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        color = Green80
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+            type.description?.let {
+                Text(text = it, fontSize = 14.sp, color = Color(0xFF607D8B))
+            }
             Button(
                 onClick = { onPurchase(type) },
                 modifier = Modifier.fillMaxWidth(),
@@ -332,10 +364,13 @@ fun PurchaseConfirmationDialog(
     val endDate = calendar.time
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Podsumowanie zakupu", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(text = "Podsumowanie zakupu", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green80)
 
                 Text(text = "Typ: ${type.name}")
                 Text(text = "Ważny od: ${sdf.format(startDate)} do: ${sdf.format(endDate)}")
@@ -343,9 +378,15 @@ fun PurchaseConfirmationDialog(
 
                 val balance = SessionManager.getBalance()
                 val remaining = balance - type.price
-                Text(text = "Saldo po zakupie: ${String.format(Locale.getDefault(), "%.2f", remaining)} zł")
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9))) {
+                    Text(
+                        text = "Saldo po zakupie: ${String.format(Locale.getDefault(), "%.2f", remaining)} zł",
+                        modifier = Modifier.padding(12.dp),
+                        fontWeight = FontWeight.SemiBold,
+                        color = Green80
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(12.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) {
                         Text("Anuluj")
