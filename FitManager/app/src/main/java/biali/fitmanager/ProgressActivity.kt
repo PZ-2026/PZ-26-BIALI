@@ -38,9 +38,81 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import biali.fitmanager.network.ProgressSummaryResponse
 
 data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val sets: Int, val reps: Int, val sessionId: Int? = null)
 data class ClientWorkoutDto(val id: Int, val clientName: String, val exerciseName: String, val weight: Double, val sets: Int, val reps: Int, val date: String, val sessionId: Int? = null)
+
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * oraz inne formaty zawierające 8 cyfr (próbuje wyodrębnić dzień/miesiąc/rok).
+ */
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * YYYY-MM-DD HH:MM:SS, oraz inne formaty zawierające 8 cyfr.
+ */
+private fun formatDisplayDate(dateString: String?): String {
+    if (dateString.isNullOrBlank() || dateString.equals("null", ignoreCase = true)) return ""
+    var s = dateString.trim()
+    
+    // Jeśli już w formacie DD.MM.YYYY – zwróć bez zmian
+    if (Regex("^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(s)) return s
+    
+    // Jeśli zawiera spację – weź tylko część przed spacją (odrzuć czas)
+    if (s.contains(" ")) {
+        s = s.substringBefore(" ")
+    }
+    
+    // Jeśli w formacie YYYY-MM-DD – konwertuj na DD.MM.YYYY
+    val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(s)
+    if (isoMatch != null) {
+        val (year, month, day) = isoMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie YYYY/MM/DD – konwertuj na DD.MM.YYYY
+    val slashMatch = Regex("^(\\d{4})/(\\d{2})/(\\d{2})$").find(s)
+    if (slashMatch != null) {
+        val (year, month, day) = slashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie DD/MM/YYYY – konwertuj na DD.MM.YYYY
+    val euSlashMatch = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").find(s)
+    if (euSlashMatch != null) {
+        val (day, month, year) = euSlashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Fallback: wyciągnij 8 cyfr i spróbuj zinterpretować
+    val digits = s.replace(Regex("[^0-9]"), "")
+    if (digits.length >= 8) {
+        val d1 = digits.substring(0, 2).toIntOrNull() ?: 0
+        val d2 = digits.substring(2, 4).toIntOrNull() ?: 0
+        val d3 = digits.substring(4, 6).toIntOrNull() ?: 0
+        val d4 = digits.substring(6, 8).toIntOrNull() ?: 0
+        // yyyyMMdd
+        if (d1 in 20..99 && d2 in 1..12 && d3 in 1..31) {
+            val year = if (d1 < 100) 2000 + d1 else d1
+            return "${d3.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.${year}"
+        }
+        // ddMMyyyy
+        if (d3 in 20..99 && d2 in 1..12 && d1 in 1..31) {
+            val year = if (d3 < 100) 2000 + d3 else 2000 + d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.20${d3}"
+        }
+        // dd.MM.yyyy z 8 cyframi
+        if (d1 in 1..31 && d2 in 1..12 && (d3 in 20..99 || d3 in 2020..2100)) {
+            val year = if (d3 < 100) 2000 + d3 else d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.$year"
+        }
+    }
+    
+    // Ostateczny fallback – zwróć oryginał
+    return s
+}
 
 class ProgressActivity : ComponentActivity() {
     private val viewModel: ProgressViewModel by viewModels()
@@ -106,6 +178,7 @@ fun ProgressScreen(
 
     var selectedExerciseName by remember { mutableStateOf<String?>(null) }
     var showWeightDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -162,7 +235,7 @@ fun ProgressScreen(
                             Text("Twoja waga", fontSize = 14.sp, color = Color.Gray)
                             if (latestLog != null) {
                                 Text("${latestLog.weight} kg", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4A6B5D))
-                                Text("Ostatni pomiar: ${latestLog.logDate}", fontSize = 12.sp, color = Color.Gray)
+                                Text("Ostatni pomiar: ${formatDisplayDate(latestLog.logDate)}", fontSize = 12.sp, color = Color.Gray)
                             } else {
                                 Text("Brak pomiarów", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
                             }
@@ -250,6 +323,20 @@ fun ProgressScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Przycisk generowania raportu postępów
+                Button(
+                    onClick = {
+                        viewModel.fetchProgressSummary()
+                        showReportDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6B5D))
+                ) {
+                    Text("Generuj raport postępów", color = Color.White)
+                }
+
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
@@ -293,6 +380,15 @@ fun ProgressScreen(
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))) { Text("Zapisz", color = Color.White) }
                 },
                 dismissButton = { TextButton(onClick = { showWeightDialog = false }) { Text("Anuluj", color = Color.Gray) } }
+            )
+        }
+
+        if (showReportDialog) {
+            ProgressReportDialog(
+                summary = state.progressSummary,
+                isLoading = state.isLoadingSummary,
+                error = state.summaryError,
+                onDismiss = { showReportDialog = false }
             )
         }
     }
@@ -371,7 +467,7 @@ fun ExerciseProgressDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("• ${log.date} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Text("• ${formatDisplayDate(log.date)} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 13.sp, modifier = Modifier.weight(1f))
                             Row {
                                 IconButton(onClick = { logToEdit = log }, modifier = Modifier.size(28.dp)) {
                                     Icon(Icons.Filled.Edit, contentDescription = "Edytuj", tint = Color(0xFF1E88E5), modifier = Modifier.size(20.dp))
@@ -445,5 +541,147 @@ fun EditWorkoutDialog(
             }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) { Text("Zapisz", color = Color.White) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
+    )
+}
+
+@Composable
+fun ProgressReportDialog(
+    summary: ProgressSummaryResponse?,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Raport postępów", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF4A6B5D))
+                    }
+                } else if (error != null) {
+                    Text("Błąd: $error", color = MaterialTheme.colorScheme.error)
+                } else if (summary != null) {
+                    // Nagłówek raportu
+                    Text(
+                        text = "Podsumowanie Twoich postępów",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF4A6B5D)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Statystyki
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                        elevation = CardDefaults.cardElevation(0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Dni od pierwszego treningu: ${summary.daysSinceFirstTraining}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Okres: ${summary.dateRange}",
+                                fontSize = 14.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Lista ćwiczeń z progresją
+                    Text(
+                        text = "Progresja ćwiczeń:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    summary.progressList.forEach { exercise ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(1.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = exercise.exerciseName,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Text(
+                                    text = "${exercise.startWeight} kg → ${exercise.endWeight} kg",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = if (exercise.endWeight > exercise.startWeight)
+                                        Color(0xFF4CAF50) else Color(0xFFFFA000)
+                                )
+                            }
+                        }
+                    }
+
+                    // Wykres słupkowy z chartData
+                    if (summary.chartData.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Ogólny postęp:",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.DarkGray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Prosty wykres słupkowy
+                        val maxVal = summary.chartData.maxOrNull()?.toFloat() ?: 1f
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(100.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            summary.chartData.forEachIndexed { index, value ->
+                                val barHeight = ((value.toFloat() / maxVal) * 80).dp
+                                val barColor = when {
+                                    index == 0 -> Color(0xFFFFA000)
+                                    index == summary.chartData.size - 1 -> Color(0xFF4CAF50)
+                                    else -> Color(0xFF1E88E5)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "$value",
+                                        fontSize = 10.sp,
+                                        color = Color.Gray
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .width(24.dp)
+                                            .height(barHeight)
+                                            .background(barColor, RoundedCornerShape(4.dp))
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Zamknij", color = Color(0xFF4A6B5D))
+            }
+        }
     )
 }

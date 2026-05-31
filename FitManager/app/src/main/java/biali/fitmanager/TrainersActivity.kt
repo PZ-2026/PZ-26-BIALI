@@ -472,7 +472,7 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
                 sessions.forEach { session ->
                     Column(modifier = Modifier.padding(bottom = 16.dp)) {
                         Text(text = session.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(text = "Data: ${session.date} | Status: ${session.status}", fontSize = 13.sp, color = Color.Gray)
+                        Text(text = "Data: ${formatDisplayDate(session.date)} | Status: ${session.status}", fontSize = 13.sp, color = Color.Gray)
 
                         if (session.exercises.isEmpty()) {
                             Text(
@@ -509,4 +509,70 @@ private fun calculateRemainingDays(isoDateString: String): Long {
     } catch (e: Exception) {
         0L
     }
+}
+
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * oraz inne formaty zawierające 8 cyfr (próbuje wyodrębnić dzień/miesiąc/rok).
+ */
+private fun formatDisplayDate(dateString: String?): String {
+    if (dateString.isNullOrBlank() || dateString.equals("null", ignoreCase = true)) return ""
+    var s = dateString.trim()
+    
+    // Jeśli już w formacie DD.MM.YYYY – zwróć bez zmian
+    if (Regex("^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(s)) return s
+    
+    // Jeśli zawiera spację – weź tylko część przed spacją (odrzuć czas)
+    if (s.contains(" ")) {
+        s = s.substringBefore(" ")
+    }
+    
+    // Jeśli w formacie YYYY-MM-DD – konwertuj na DD.MM.YYYY
+    val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(s)
+    if (isoMatch != null) {
+        val (year, month, day) = isoMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie YYYY/MM/DD – konwertuj na DD.MM.YYYY
+    val slashMatch = Regex("^(\\d{4})/(\\d{2})/(\\d{2})$").find(s)
+    if (slashMatch != null) {
+        val (year, month, day) = slashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie DD/MM/YYYY – konwertuj na DD.MM.YYYY
+    val euSlashMatch = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").find(s)
+    if (euSlashMatch != null) {
+        val (day, month, year) = euSlashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Fallback: wyciągnij 8 cyfr i spróbuj zinterpretować
+    val digits = s.replace(Regex("[^0-9]"), "")
+    if (digits.length >= 8) {
+        val d1 = digits.substring(0, 2).toIntOrNull() ?: 0
+        val d2 = digits.substring(2, 4).toIntOrNull() ?: 0
+        val d3 = digits.substring(4, 6).toIntOrNull() ?: 0
+        val d4 = digits.substring(6, 8).toIntOrNull() ?: 0
+        // yyyyMMdd
+        if (d1 in 20..99 && d2 in 1..12 && d3 in 1..31) {
+            val year = if (d1 < 100) 2000 + d1 else d1
+            return "${d3.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.${year}"
+        }
+        // ddMMyyyy
+        if (d3 in 20..99 && d2 in 1..12 && d1 in 1..31) {
+            val year = if (d3 < 100) 2000 + d3 else 2000 + d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.20${d3}"
+        }
+        // dd.MM.yyyy z 8 cyframi
+        if (d1 in 1..31 && d2 in 1..12 && (d3 in 20..99 || d3 in 2020..2100)) {
+            val year = if (d3 < 100) 2000 + d3 else d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.$year"
+        }
+    }
+    
+    // Ostateczny fallback – zwróć oryginał
+    return s
 }

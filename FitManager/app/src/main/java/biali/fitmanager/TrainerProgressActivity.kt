@@ -69,18 +69,117 @@ data class ClientTrainingSession(
     val status: String?
 )
 
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * oraz inne formaty zawierające 8 cyfr (próbuje wyodrębnić dzień/miesiąc/rok).
+ */
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * YYYY-MM-DD HH:MM:SS, oraz inne formaty zawierające 8 cyfr.
+ */
+private fun formatDisplayDate(dateString: String?): String {
+    if (dateString.isNullOrBlank() || dateString.equals("null", ignoreCase = true)) return ""
+    var s = dateString.trim()
+    
+    // LOG: zobacz co przychodzi
+    android.util.Log.d("DATE_DEBUG", "formatDisplayDate INPUT: '$dateString'")
+    
+    // Jeśli już w formacie DD.MM.YYYY – zwróć bez zmian
+    if (Regex("^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(s)) {
+        android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> already DD.MM.YYYY: '$s'")
+        return s
+    }
+    
+    // Jeśli zawiera spację – weź tylko część przed spacją (odrzuć czas)
+    if (s.contains(" ")) {
+        s = s.substringBefore(" ")
+        android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> after strip time: '$s'")
+    }
+    
+    // Jeśli w formacie YYYY-MM-DD – konwertuj na DD.MM.YYYY
+    val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(s)
+    if (isoMatch != null) {
+        val (year, month, day) = isoMatch.destructured
+        val result = "$day.$month.$year"
+        android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> ISO match: '$result'")
+        return result
+    }
+    
+    // Jeśli w formacie YYYY/MM/DD – konwertuj na DD.MM.YYYY
+    val slashMatch = Regex("^(\\d{4})/(\\d{2})/(\\d{2})$").find(s)
+    if (slashMatch != null) {
+        val (year, month, day) = slashMatch.destructured
+        val result = "$day.$month.$year"
+        android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> slash match: '$result'")
+        return result
+    }
+    
+    // Jeśli w formacie DD/MM/YYYY – konwertuj na DD.MM.YYYY
+    val euSlashMatch = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").find(s)
+    if (euSlashMatch != null) {
+        val (day, month, year) = euSlashMatch.destructured
+        val result = "$day.$month.$year"
+        android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> EU slash match: '$result'")
+        return result
+    }
+    
+    // Fallback: wyciągnij 8 cyfr i spróbuj zinterpretować
+    val digits = s.replace(Regex("[^0-9]"), "")
+    android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback digits: '$digits' from s='$s'")
+    if (digits.length >= 8) {
+        val d1 = digits.substring(0, 2).toIntOrNull() ?: 0
+        val d2 = digits.substring(2, 4).toIntOrNull() ?: 0
+        val d3 = digits.substring(4, 6).toIntOrNull() ?: 0
+        val d4 = digits.substring(6, 8).toIntOrNull() ?: 0
+        // yyyyMMdd
+        if (d1 in 20..99 && d2 in 1..12 && d3 in 1..31) {
+            val year = if (d1 < 100) 2000 + d1 else d1
+            val result = "${d3.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.${year}"
+            android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback yyyyMMdd: '$result'")
+            return result
+        }
+        // ddMMyyyy
+        if (d3 in 20..99 && d2 in 1..12 && d1 in 1..31) {
+            val year = if (d3 < 100) 2000 + d3 else 2000 + d3
+            val result = "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.20${d3}"
+            android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback ddMMyyyy: '$result'")
+            return result
+        }
+        // dd.MM.yyyy z 8 cyframi
+        if (d1 in 1..31 && d2 in 1..12 && (d3 in 20..99 || d3 in 2020..2100)) {
+            val year = if (d3 < 100) 2000 + d3 else d3
+            val result = "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.$year"
+            android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback ddMMyyyy2: '$result'")
+            return result
+        }
+    }
+    
+    android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> NO MATCH, returning raw: '$s'")
+    // Ostateczny fallback – zwróć oryginał
+    return s
+}
+
 private fun getDaysAgoText(dateString: String): String {
+    // Wyciągnij datę w formacie DD.MM.YYYY i oblicz różnicę dni
+    val match = Regex("(\\d{2})\\.(\\d{2})\\.(\\d{4})").find(dateString) ?: return ""
+    val (dayStr, monthStr, yearStr) = match.destructured
+    val day = dayStr.toIntOrNull() ?: return ""
+    val month = monthStr.toIntOrNull() ?: return ""
+    val year = yearStr.toIntOrNull() ?: return ""
     return try {
-        val sdf = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
-        val date = sdf.parse(dateString) ?: return ""
+        val cal = java.util.Calendar.getInstance()
+        cal.set(year, month - 1, day, 0, 0, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val logTime = cal.timeInMillis
         val today = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.HOUR_OF_DAY, 0)
             set(java.util.Calendar.MINUTE, 0)
             set(java.util.Calendar.SECOND, 0)
             set(java.util.Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val logDate = date.time
-        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(today - logDate)
+        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(today - logTime)
         when {
             days == 0L -> "(dzisiaj)"
             days == 1L -> "(wczoraj)"
@@ -433,8 +532,9 @@ fun ClientProgressDashboardCard(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(text = clientName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        val displayDate = latestLog?.logDate?.let { formatDisplayDate(it) } ?: "Brak"
                         val daysAgo = latestLog?.logDate?.let { getDaysAgoText(it) } ?: ""
-                        Text(text = "Ostatni pomiar: ${latestLog?.logDate ?: "Brak"} $daysAgo", fontSize = 12.sp, color = Color.Gray)
+                        Text(text = "Ostatni pomiar: $displayDate $daysAgo", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
                 if (latestLog != null) {
@@ -541,7 +641,7 @@ fun TimelineSessionCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = session.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Termin: ${session.date}", fontSize = 14.sp, color = Color.Gray)
+                    Text(text = "Termin: ${formatDisplayDate(session.date)}", fontSize = 14.sp, color = Color.Gray)
                     Text(text = "Czas trwania: ${session.duration}", fontSize = 14.sp, color = Color.Gray)
                     if (session.clientName != null) {
                         Spacer(modifier = Modifier.height(2.dp))
@@ -941,7 +1041,7 @@ fun ClientRealWorkoutsDialog(
                         items(exerciseLogs) { log ->
                             val isTimeBased = log.exerciseName.contains("Deska", ignoreCase = true) || log.exerciseName.contains("Plank", ignoreCase = true)
                             val repsLabel = if (isTimeBased) "sek." else "powt."
-                            Text("• ${log.date} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 14.sp)
+                            Text("• ${formatDisplayDate(log.date)} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 14.sp)
                         }
                     }
                 }
