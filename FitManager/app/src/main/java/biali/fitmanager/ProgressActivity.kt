@@ -1,7 +1,14 @@
 package biali.fitmanager
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -25,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,10 +43,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import biali.fitmanager.network.ApiResult
+import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.ProgressSummaryResponse
+import kotlinx.coroutines.launch
 
 data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val sets: Int, val reps: Int, val sessionId: Int? = null)
 data class ClientWorkoutDto(val id: Int, val clientName: String, val exerciseName: String, val weight: Double, val sets: Int, val reps: Int, val date: String, val sessionId: Int? = null)
@@ -175,10 +188,11 @@ fun ProgressScreen(
 ) {
 
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var selectedExerciseName by remember { mutableStateOf<String?>(null) }
     var showWeightDialog by remember { mutableStateOf(false) }
-    var showReportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -325,11 +339,20 @@ fun ProgressScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Przycisk generowania raportu postępów
+                // Przycisk generowania raportu postępów - generuje PDF i otwiera natychmiast
                 Button(
                     onClick = {
-                        viewModel.fetchProgressSummary()
-                        showReportDialog = true
+                        scope.launch {
+                            val repo = FitManagerRepository()
+                            when (val res = repo.getProgressSummary()) {
+                                is ApiResult.Success -> {
+                                    generateAndOpenProgressPdf(context, res.data)
+                                }
+                                is ApiResult.Error -> {
+                                    Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6B5D))
@@ -383,14 +406,6 @@ fun ProgressScreen(
             )
         }
 
-        if (showReportDialog) {
-            ProgressReportDialog(
-                summary = state.progressSummary,
-                isLoading = state.isLoadingSummary,
-                error = state.summaryError,
-                onDismiss = { showReportDialog = false }
-            )
-        }
     }
 }
 
@@ -544,144 +559,170 @@ fun EditWorkoutDialog(
     )
 }
 
-@Composable
-fun ProgressReportDialog(
-    summary: ProgressSummaryResponse?,
-    isLoading: Boolean,
-    error: String?,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Raport postępów", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFF4A6B5D))
-                    }
-                } else if (error != null) {
-                    Text("Błąd: $error", color = MaterialTheme.colorScheme.error)
-                } else if (summary != null) {
-                    // Nagłówek raportu
-                    Text(
-                        text = "Podsumowanie Twoich postępów",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF4A6B5D)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
+/**
+ * Generuje PDF z raportem postępów, zapisuje do cache i otwiera natychmiast.
+ * Używa android.graphics.pdf.PdfDocument (tak samo jak generateSessionPdf w HomeActivity).
+ */
+private fun generateAndOpenProgressPdf(context: Context, summary: ProgressSummaryResponse) {
+    try {
+        val document = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+        val paint = Paint()
 
-                    // Statystyki
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
-                        elevation = CardDefaults.cardElevation(0.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Dni od pierwszego treningu: ${summary.daysSinceFirstTraining}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Okres: ${summary.dateRange}",
-                                fontSize = 14.sp,
-                                color = Color.Gray
-                            )
-                        }
-                    }
+        // Białe tło
+        paint.color = android.graphics.Color.WHITE
+        canvas.drawRect(0f, 0f, 595f, 842f, paint)
 
-                    Spacer(modifier = Modifier.height(16.dp))
+        paint.color = android.graphics.Color.BLACK
 
-                    // Lista ćwiczeń z progresją
-                    Text(
-                        text = "Progresja ćwiczeń:",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.DarkGray
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+        // Tytuł
+        paint.textSize = 22f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Raport postępów", 50f, 60f, paint)
 
-                    summary.progressList.forEach { exercise ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(1.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = exercise.exerciseName,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp
-                                    )
-                                }
-                                Text(
-                                    text = "${exercise.startWeight} kg → ${exercise.endWeight} kg",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp,
-                                    color = if (exercise.endWeight > exercise.startWeight)
-                                        Color(0xFF4CAF50) else Color(0xFFFFA000)
-                                )
-                            }
-                        }
-                    }
+        // Podtytuł
+        paint.textSize = 14f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Podsumowanie Twoich postępów treningowych", 50f, 90f, paint)
 
-                    // Wykres słupkowy z chartData
-                    if (summary.chartData.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Ogólny postęp:",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.DarkGray
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        // Prosty wykres słupkowy
-                        val maxVal = summary.chartData.maxOrNull()?.toFloat() ?: 1f
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(100.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            summary.chartData.forEachIndexed { index, value ->
-                                val barHeight = ((value.toFloat() / maxVal) * 80).dp
-                                val barColor = when {
-                                    index == 0 -> Color(0xFFFFA000)
-                                    index == summary.chartData.size - 1 -> Color(0xFF4CAF50)
-                                    else -> Color(0xFF1E88E5)
-                                }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        text = "$value",
-                                        fontSize = 10.sp,
-                                        color = Color.Gray
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .width(24.dp)
-                                            .height(barHeight)
-                                            .background(barColor, RoundedCornerShape(4.dp))
-                                    )
-                                }
-                            }
-                        }
-                    }
+        var y = 130f
+
+        // Statystyki
+        paint.textSize = 16f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Statystyki", 50f, y, paint)
+        y += 30f
+
+        paint.textSize = 14f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Dni od pierwszego treningu: ${summary.daysSinceFirstTraining}", 50f, y, paint)
+        y += 25f
+        canvas.drawText("Okres: ${summary.dateRange}", 50f, y, paint)
+        y += 40f
+
+        // Progresja ćwiczeń
+        paint.textSize = 16f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Progresja ćwiczeń", 50f, y, paint)
+        y += 30f
+
+        paint.textSize = 14f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        if (summary.progressList.isEmpty()) {
+            canvas.drawText("Brak danych o progresji ćwiczeń.", 50f, y, paint)
+            y += 25f
+        } else {
+            for (exercise in summary.progressList) {
+                val arrow = if (exercise.endWeight > exercise.startWeight) "→" else "→"
+                val text = "${exercise.exerciseName}: ${exercise.startWeight} kg $arrow ${exercise.endWeight} kg"
+                canvas.drawText(text, 50f, y, paint)
+                y += 25f
+
+                // Jeśli brakuje miejsca, zakończ stronę
+                if (y > 780f) {
+                    document.finishPage(page)
+                    // Nowa strona
+                    val pageInfo2 = PdfDocument.PageInfo.Builder(595, 842, 2).create()
+                    val page2 = document.startPage(pageInfo2)
+                    val canvas2 = page2.canvas
+                    paint.color = android.graphics.Color.WHITE
+                    canvas2.drawRect(0f, 0f, 595f, 842f, paint)
+                    paint.color = android.graphics.Color.BLACK
+                    paint.textSize = 14f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    y = 50f
+                    // Kontynuuj na nowej stronie
+                    canvas2.drawText(text, 50f, y, paint)
+                    y += 25f
+                    // Używamy canvas2 od teraz
+                    canvas2.drawText("(ciąg dalszy)", 50f, y, paint)
+                    y += 25f
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Zamknij", color = Color(0xFF4A6B5D))
+        }
+
+        y += 20f
+
+        // Wykres słupkowy (tekstowo)
+        if (summary.chartData.isNotEmpty()) {
+            paint.textSize = 16f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("Ogólny postęp (wykres słupkowy)", 50f, y, paint)
+            y += 30f
+
+            paint.textSize = 14f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            val maxVal = summary.chartData.maxOrNull()?.toFloat() ?: 1f
+            val barMaxWidth = 300f
+            val barHeight = 20f
+            val startX = 50f
+
+            for ((index, value) in summary.chartData.withIndex()) {
+                val barWidth = (value.toFloat() / maxVal) * barMaxWidth
+                val label = when (index) {
+                    0 -> "Początek"
+                    summary.chartData.size - 1 -> "Koniec"
+                    else -> "Etap $index"
+                }
+
+                // Rysuj etykietę
+                canvas.drawText("$label:", startX, y, paint)
+                y += 5f
+
+                // Rysuj słupek
+                paint.color = android.graphics.Color.rgb(0x4A, 0x6B, 0x5D)
+                canvas.drawRect(startX, y, startX + barWidth, y + barHeight, paint)
+                paint.color = android.graphics.Color.BLACK
+
+                // Wartość nad słupkiem
+                paint.textSize = 12f
+                canvas.drawText("$value", startX + barWidth + 8f, y + barHeight - 2f, paint)
+                paint.textSize = 14f
+
+                y += barHeight + 20f
+
+                // Jeśli brakuje miejsca, zakończ stronę
+                if (y > 780f) {
+                    document.finishPage(page)
+                    val pageInfo3 = PdfDocument.PageInfo.Builder(595, 842, 3).create()
+                    val page3 = document.startPage(pageInfo3)
+                    val canvas3 = page3.canvas
+                    paint.color = android.graphics.Color.WHITE
+                    canvas3.drawRect(0f, 0f, 595f, 842f, paint)
+                    paint.color = android.graphics.Color.BLACK
+                    paint.textSize = 14f
+                    paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                    y = 50f
+                    canvas3.drawText("(ciąg dalszy wykresu)", 50f, y, paint)
+                    y += 30f
+                }
             }
         }
-    )
+
+        // Stopka
+        paint.textSize = 10f
+        paint.color = android.graphics.Color.GRAY
+        canvas.drawText("Wygenerowano przez FitManager", 50f, 820f, paint)
+
+        document.finishPage(page)
+
+        // Zapisz do pliku w cache
+        val cacheFile = java.io.File(context.cacheDir, "progress-report.pdf")
+        cacheFile.outputStream().use { outputStream ->
+            document.writeTo(outputStream)
+        }
+        document.close()
+
+        // Otwórz PDF natychmiast przez Intent
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", cacheFile)
+        val intent = Intent(Intent.ACTION_VIEW)
+        intent.setDataAndType(uri, "application/pdf")
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Błąd podczas generowania PDF: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
 }
