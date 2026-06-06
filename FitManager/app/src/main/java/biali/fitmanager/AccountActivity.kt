@@ -24,7 +24,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -61,7 +61,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -224,7 +223,6 @@ class AccountActivity : ComponentActivity() {
 
     private suspend fun loadTrainerStats(): List<AccountStat> {
         val clientsResult = repository.getMyTrainerClients()
-        val membershipsResult = repository.getMemberships()
         val progressLogsResult = repository.getTrainerProgressLogs()
         val sessionsResult = repository.getTrainerSessions()
 
@@ -244,16 +242,11 @@ class AccountActivity : ComponentActivity() {
             is ApiResult.Success -> sessionsResult.data.size
             else -> 0
         }
-        val revenueValue = when (membershipsResult) {
-            is ApiResult.Success -> membershipsResult.data
-                .filter { it.userId in clientIds }
-                .sumOf { it.membershipType.price }
-            else -> 0.0
-        }
+        val revenueValue = clientsCount * TRAINER_RENTAL_PRICE
 
         return buildList {
             add(AccountStat("Podopieczni", clientsCount.toString(), "Aktywni klienci trenera"))
-            add(AccountStat("Przychód", String.format(Locale.getDefault(), "%.2f zł", revenueValue), "Suma z karnetów podopiecznych"))
+            add(AccountStat("Przychód", String.format(Locale.getDefault(), "%.2f zł", revenueValue), "Suma przychodu trenera"))
             add(AccountStat("Sesje", sessionsCount.toString(), "Zapisane plany treningowe"))
             add(AccountStat("Zapisy", progressLogsCount.toString(), "Logi postępu podopiecznych"))
             progressSummary?.let {
@@ -280,10 +273,15 @@ class AccountActivity : ComponentActivity() {
             is ApiResult.Success -> membershipsResult.data.size
             else -> 0
         }
-        val revenueValue = when (soldMembershipsResult) {
-            is ApiResult.Success -> soldMembershipsResult.data.sumOf { it.membershipType.price }
+        val soldMembershipsCount = when (soldMembershipsResult) {
+            is ApiResult.Success -> soldMembershipsResult.data.size
+            else -> 0
+        }
+        val membershipPrice = when (membershipsResult) {
+            is ApiResult.Success -> membershipsResult.data.firstOrNull()?.price ?: 0.0
             else -> 0.0
         }
+        val revenueValue = soldMembershipsCount * membershipPrice
 
         return buildList {
             add(AccountStat("Użytkownicy", usersCount.toString(), "Wszystkie konta w systemie"))
@@ -332,13 +330,6 @@ private fun AccountScreen(
     var editPassword by remember { mutableStateOf("") }
     var editConfirmPassword by remember { mutableStateOf("") }
     var isSavingProfile by remember { mutableStateOf(false) }
-
-    // Password change state (main version)
-    var currentPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var savingPassword by remember { mutableStateOf(false) }
-    var passwordFeedback by remember { mutableStateOf<String?>(null) }
 
     var dialogMessage by remember { mutableStateOf<String?>(null) }
 
@@ -514,91 +505,6 @@ private fun AccountScreen(
             }
         }
 
-        HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
-
-        // ---- Password Change Section (from main) ----
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(text = "Zmiana hasła", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                OutlinedTextField(
-                    value = currentPassword,
-                    onValueChange = { currentPassword = it },
-                    label = { Text("Aktualne hasło") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = newPassword,
-                    onValueChange = { newPassword = it },
-                    label = { Text("Nowe hasło") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it },
-                    label = { Text("Powtórz nowe hasło") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    onClick = {
-                        val trimmedCurrent = currentPassword.trim()
-                        val trimmedNew = newPassword.trim()
-                        val trimmedConfirm = confirmPassword.trim()
-
-                        if (trimmedCurrent.isBlank() || trimmedNew.length < 6) {
-                            dialogMessage = "Hasło musi mieć co najmniej 6 znaków."
-                            return@Button
-                        }
-                        if (trimmedNew != trimmedConfirm) {
-                            dialogMessage = "Nowe hasła nie są identyczne."
-                            return@Button
-                        }
-
-                        savingPassword = true
-                        passwordFeedback = null
-                        coroutineScope.launch {
-                            when (val result = repository.changeMyPassword(ChangePasswordRequest(trimmedCurrent, trimmedNew))) {
-                                is ApiResult.Success -> {
-                                    currentPassword = ""
-                                    newPassword = ""
-                                    confirmPassword = ""
-                                    passwordFeedback = "Hasło zostało zmienione."
-                                }
-                                is ApiResult.Unauthorized -> {
-                                    dialogMessage = "Sesja wygasła, zaloguj się ponownie."
-                                    onLogout()
-                                }
-                                is ApiResult.Error -> {
-                                    dialogMessage = when (result.code) {
-                                        400 -> "Nie udało się zmienić hasła. Sprawdź aktualne hasło i spróbuj ponownie."
-                                        401 -> "Sesja wygasła, zaloguj się ponownie."
-                                        403 -> "Brak uprawnień do zmiany hasła."
-                                        404 -> "Nie znaleziono konta lub zasobu."
-                                        else -> "Nie udało się zmienić hasła. Spróbuj ponownie."
-                                    }
-                                }
-                            }
-                            savingPassword = false
-                        }
-                    },
-                    enabled = !savingPassword,
-                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Filled.Lock, contentDescription = null)
-                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                    Text(if (savingPassword) "Zapisywanie..." else "Zmień hasło")
-                }
-
-                passwordFeedback?.let { Text(text = it, color = Color(0xFF2E7D32)) }
-            }
-        }
-
         // ---- Logout Button ----
         OutlinedButton(
             onClick = onLogout,
@@ -697,6 +603,17 @@ private fun AccountBottomNav(
             )
             NavigationBarItem(
                 selected = false,
+                onClick = { navigateByRole(context, role, "trainers") },
+                label = { Text("Podopieczni") },
+                icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = Green80,
+                    selectedTextColor = Green80,
+                    indicatorColor = LightGreen80
+                )
+            )
+            NavigationBarItem(
+                selected = false,
                 onClick = { navigateByRole(context, role, "progress") },
                 label = { Text("Postęp") },
                 icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
@@ -714,20 +631,11 @@ private fun AccountBottomNav(
             )
         }
     } else {
-        FitBottomNav(
+        AdminBottomNav(
             currentRoute = "account",
-            onNavigateToHome = {
-                navigateByRole(context, role, "home")
-            },
-            onNavigateToTrainers = {
-                navigateByRole(context, role, "trainers")
-            },
-            onNavigateToMemberships = {
-                navigateByRole(context, role, "memberships")
-            },
-            onNavigateToProgress = {
-                navigateByRole(context, role, "progress")
-            },
+            onNavigateToPanel = { navigateByRole(context, role, "home") },
+            onNavigateToTrainers = { navigateByRole(context, role, "trainers") },
+            onNavigateToProgress = { navigateByRole(context, role, "home") },
             onNavigateToAccount = onCurrentScreen
         )
     }

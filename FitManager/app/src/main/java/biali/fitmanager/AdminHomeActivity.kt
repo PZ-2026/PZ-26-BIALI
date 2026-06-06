@@ -15,16 +15,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,9 +33,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -48,11 +46,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.launch
 import androidx.core.content.FileProvider
 import biali.fitmanager.network.SessionManager
@@ -88,7 +88,15 @@ class AdminHomeActivity : ComponentActivity() {
                             onLogout = ::logout
                         )
                     },
-                    bottomBar = { AdminBottomNav(onNavigateToAccount = ::navigateToAccount) }
+                    bottomBar = {
+                        AdminBottomNav(
+                            currentRoute = "panel",
+                            onNavigateToPanel = { },
+                            onNavigateToTrainers = { },
+                            onNavigateToProgress = { },
+                            onNavigateToAccount = ::navigateToAccount
+                        )
+                    }
                 ) { innerPadding ->
                     AdminDashboardScreen(
                         modifier = Modifier.padding(innerPadding),
@@ -228,28 +236,39 @@ private fun AdminDashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Mój panel", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(text = "Panel administratora", fontSize = 16.sp)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .background(color = Color.LightGray)
-                .padding(16.dp)
-        ) {
-            Text(text = "Zarządzanie użytkownikami", modifier = Modifier.align(Alignment.Center))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(text = "Panel administratora", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Nowoczesny podgląd wszystkich narzędzi administracyjnych", fontSize = 15.sp, color = Color.Gray)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onRefresh,
-                colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)
-            ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Odśwież")
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            DashboardTile(
+                title = "Użytkownicy",
+                description = "Lista kont i role",
+                count = state.users.size.toString(),
+                background = Color(0xFFEAF8F1),
+                accent = Green80,
+                modifier = Modifier.weight(1f)
+            )
+            DashboardTile(
+                title = "Trenerzy",
+                description = "Zespół trenerski",
+                count = state.trainers.size.toString(),
+                background = Color(0xFFEAF3FF),
+                accent = Color(0xFF1E88E5),
+                modifier = Modifier.weight(1f)
+            )
+            DashboardTile(
+                title = "Karnety",
+                description = "Typy i ceny",
+                count = state.membershipTypes.size.toString(),
+                background = Color(0xFFFFF4E1),
+                accent = Color(0xFFFF9800),
+                modifier = Modifier.weight(1f)
+            )
         }
 
         state.message?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
@@ -301,47 +320,30 @@ private fun AdminDashboardScreen(
 }
 
 @Composable
-private fun AdminBottomNav(
-    onNavigateToAccount: () -> Unit = {}
+private fun DashboardTile(
+    title: String,
+    description: String,
+    count: String,
+    background: Color,
+    accent: Color,
+    modifier: Modifier = Modifier
 ) {
-    NavigationBar(
-        containerColor = Color.White,
-        tonalElevation = 8.dp
+    Card(
+        modifier = modifier.height(136.dp),
+        colors = CardDefaults.cardColors(containerColor = background),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(18.dp)
     ) {
-        NavigationBarItem(
-            selected = true,
-            onClick = { },
-            label = { Text("Panel") },
-            icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Green80,
-                selectedTextColor = Green80,
-                indicatorColor = LightGreen80
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = { },
-            label = { Text("Raporty") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Raporty") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = { },
-            label = { Text("Postęp") },
-            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToAccount,
-            label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Green80,
-                selectedTextColor = Green80,
-                indicatorColor = LightGreen80
-            )
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent)
+            Text(text = count, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+            Text(text = description, fontSize = 11.sp, color = Color(0xFF546E7A))
+        }
     }
 }
 
@@ -352,13 +354,46 @@ private fun AdminUsersSection(
     onEditUser: (biali.fitmanager.network.UserResponse) -> Unit,
     onDeleteUser: (biali.fitmanager.network.UserResponse) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Użytkownicy", fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("ALL", "CLIENT", "TRAINER", "ADMIN").forEach { role ->
-                    OutlinedButton(onClick = { onUserFilterChange(role) }) {
-                        Text(role)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Użytkownicy", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green80)
+                Text("Filtruj i zarządzaj kontami", fontSize = 12.sp, color = Color.Gray)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("ALL", "CLIENT").forEach { role ->
+                        val buttonColors = when (role) {
+                            "ALL" -> ButtonDefaults.buttonColors(containerColor = Color(0xFFECEFF1), contentColor = Color(0xFF37474F))
+                            else -> ButtonDefaults.buttonColors(containerColor = Color(0xFFEAF8F1), contentColor = Green80)
+                        }
+                        Button(
+                            onClick = { onUserFilterChange(role) },
+                            colors = buttonColors,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(role)
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("TRAINER", "ADMIN").forEach { role ->
+                        val buttonColors = when (role) {
+                            "TRAINER" -> ButtonDefaults.buttonColors(containerColor = Color(0xFFEAF3FF), contentColor = Color(0xFF1E88E5))
+                            else -> ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEBEE), contentColor = Color(0xFFD32F2F))
+                        }
+                        Button(
+                            onClick = { onUserFilterChange(role) },
+                            colors = buttonColors,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(role)
+                        }
                     }
                 }
             }
@@ -376,9 +411,14 @@ private fun AdminTrainersSection(
     onEditUser: (biali.fitmanager.network.UserResponse) -> Unit,
     onDeleteUser: (biali.fitmanager.network.UserResponse) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F8FF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Trenerzy", fontWeight = FontWeight.Bold)
+            Text("Trenerzy", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1E88E5))
             trainers.forEach { trainer ->
                 UserRow(user = trainer, onEdit = { onEditUser(trainer) }, onDelete = { onDeleteUser(trainer) })
             }
@@ -388,11 +428,16 @@ private fun AdminTrainersSection(
 
 @Composable
 private fun AdminReportSection(onGenerateReport: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFDFBF5)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("Raporty", fontWeight = FontWeight.Bold)
-                Button(onClick = onGenerateReport, colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White)) {
+                Text("Raporty", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFFB26A00))
+                Button(onClick = onGenerateReport, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB26A00), contentColor = Color.White)) {
                     Icon(Icons.Filled.Person, contentDescription = null)
                     Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                     Text("Generuj raport")
@@ -408,23 +453,29 @@ private fun UserRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("#${user.id} • ${user.firstName} ${user.lastName} • ${user.role}")
-        Text(user.email)
-        Text(user.phoneNumber ?: "Brak telefonu")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onEdit) {
-                Icon(Icons.Filled.Edit, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Edytuj")
-            }
-            OutlinedButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = null)
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Usuń")
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(14.dp)) {
+            Text("#${user.id} • ${user.firstName} ${user.lastName} • ${user.role}", fontWeight = FontWeight.SemiBold)
+            Text(user.email, color = Color(0xFF546E7A))
+            Text(user.phoneNumber ?: "Brak telefonu", color = Color.Gray)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                    Text("Edytuj")
+                }
+                OutlinedButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = null)
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                    Text("Usuń")
+                }
             }
         }
-        HorizontalDivider()
     }
 }
 
@@ -435,9 +486,14 @@ private fun AdminUserFormSection(
     onSave: () -> Unit,
     onClear: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBF9)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (state.form.id.isBlank()) "Dodaj / edytuj konto" else "Edycja konta #${state.form.id}", fontWeight = FontWeight.Bold)
+            Text(if (state.form.id.isBlank()) "Dodaj / edytuj konto" else "Edycja konta #${state.form.id}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Green80)
 
             OutlinedTextField(
                 value = state.form.email,
@@ -499,23 +555,28 @@ private fun AdminTrainerClientsSection(
     onAssignClient: () -> Unit,
     onUnassignClient: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F2FF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Podopieczni trenera", fontWeight = FontWeight.Bold)
+            Text("Podopieczni trenera", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF7E57C2))
             OutlinedTextField(
                 value = state.trainerIdForClients,
                 onValueChange = onTrainerIdChange,
                 label = { Text("trainerId") },
                 modifier = Modifier.fillMaxWidth()
             )
-            Button(onClick = onLoadTrainerClients) { Text("Pobierz klientów") }
+            Button(onClick = onLoadTrainerClients, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2), contentColor = Color.White)) { Text("Pobierz klientów") }
 
             if (state.isTrainerClientsLoading) {
                 Text("Ładowanie klientów...")
             }
 
             state.trainerClients.forEach { client ->
-                Text("#${client.id} • ${client.firstName} ${client.lastName} • ${client.email}")
+                Text("#${client.id} • ${client.firstName} ${client.lastName} • ${client.email}", fontWeight = FontWeight.Medium)
             }
 
             HorizontalDivider()
@@ -527,7 +588,7 @@ private fun AdminTrainerClientsSection(
                 modifier = Modifier.fillMaxWidth()
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAssignClient) { Text("Przypisz") }
+                Button(onClick = onAssignClient, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2), contentColor = Color.White)) { Text("Przypisz") }
                 OutlinedButton(onClick = onUnassignClient) { Text("Odepnij") }
             }
         }
@@ -543,32 +604,43 @@ private fun AdminMembershipTypesSection(
     onEditMembershipType: (biali.fitmanager.network.MembershipTypeResponse) -> Unit,
     onDeleteMembershipType: (Int) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8EE)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Typy karnetów", fontWeight = FontWeight.Bold)
-            
+            Text("Typy karnetów", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFFFF9800))
+
             state.membershipTypes.forEach { membershipType ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("${membershipType.name} • ${membershipType.price}zł • ${membershipType.durationDays} dni", fontWeight = FontWeight.SemiBold)
-                    if (membershipType.description != null) Text(membershipType.description, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onEditMembershipType(membershipType) }) {
-                            Icon(Icons.Filled.Edit, contentDescription = null)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                            Text("Edytuj")
-                        }
-                        OutlinedButton(onClick = { onDeleteMembershipType(membershipType.id) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                            Text("Usuń")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(12.dp)) {
+                        Text("${membershipType.name} • ${membershipType.price}zł • ${membershipType.durationDays} dni", fontWeight = FontWeight.SemiBold)
+                        if (membershipType.description != null) Text(membershipType.description, fontSize = 12.sp, color = Color.Gray)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onEditMembershipType(membershipType) }) {
+                                Icon(Icons.Filled.Edit, contentDescription = null)
+                                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                                Text("Edytuj")
+                            }
+                            OutlinedButton(onClick = { onDeleteMembershipType(membershipType.id) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = null)
+                                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                                Text("Usuń")
+                            }
                         }
                     }
-                    HorizontalDivider()
                 }
             }
 
             HorizontalDivider()
-            Text(if (state.membershipTypeForm.id.isBlank()) "Dodaj / edytuj typ karnetu" else "Edycja typu #${state.membershipTypeForm.id}", fontWeight = FontWeight.Bold)
+            Text(if (state.membershipTypeForm.id.isBlank()) "Dodaj / edytuj typ karnetu" else "Edycja typu #${state.membershipTypeForm.id}", fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
 
             OutlinedTextField(
                 value = state.membershipTypeForm.name,
@@ -597,7 +669,7 @@ private fun AdminMembershipTypesSection(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSave) { Text("Zapisz") }
+                Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800), contentColor = Color.White)) { Text("Zapisz") }
                 if (state.membershipTypeForm.id.isNotBlank()) {
                     OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
                         Text("Anuluj edycję")

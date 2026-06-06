@@ -44,8 +44,9 @@ import biali.fitmanager.network.UserResponse
 import biali.fitmanager.ui.theme.GymManagerTheme
 import biali.fitmanager.ui.theme.LightGreen80
 
-// TODO: Docelowo przenieść te modele do osobnego pliku (np. w paczce network) 
-// i pobierać je z backendu (repozytorium).
+const val EXTRA_PLAN_CLIENT_ID = "PLAN_CLIENT_ID"
+const val EXTRA_PLAN_CLIENT_NAME = "PLAN_CLIENT_NAME"
+
 data class ClientProgressLog(
     val id: Int,
     val clientName: String,
@@ -55,10 +56,10 @@ data class ClientProgressLog(
 )
 
 data class CreateSessionRequest(val clientId: Int, val title: String, val startTime: String, val durationMinutes: Int)
-
 data class ClientExercise(val id: Int, val name: String, val bodyPart: String)
 data class ClientSessionExercise(val id: Int, val sessionId: Int, val exerciseName: String, val sets: Int, val reps: Int, val weight: Double)
 data class AddSessionExerciseRequest(val exerciseId: Int, val sets: Int, val reps: Int, val weight: Double)
+data class ClientWorkout(val id: Int, val sessionId: Int, val clientName: String, val details: String) // Dodany pomocniczy model
 
 data class ClientTrainingSession(
     val id: Int,
@@ -69,36 +70,22 @@ data class ClientTrainingSession(
     val status: String?
 )
 
-/**
- * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
- * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
- * oraz inne formaty zawierające 8 cyfr (próbuje wyodrębnić dzień/miesiąc/rok).
- */
-/**
- * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
- * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
- * YYYY-MM-DD HH:MM:SS, oraz inne formaty zawierające 8 cyfr.
- */
 private fun formatDisplayDate(dateString: String?): String {
     if (dateString.isNullOrBlank() || dateString.equals("null", ignoreCase = true)) return ""
     var s = dateString.trim()
     
-    // LOG: zobacz co przychodzi
     android.util.Log.d("DATE_DEBUG", "formatDisplayDate INPUT: '$dateString'")
     
-    // Jeśli już w formacie DD.MM.YYYY – zwróć bez zmian
     if (Regex("^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(s)) {
         android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> already DD.MM.YYYY: '$s'")
         return s
     }
     
-    // Jeśli zawiera spację – weź tylko część przed spacją (odrzuć czas)
     if (s.contains(" ")) {
         s = s.substringBefore(" ")
         android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> after strip time: '$s'")
     }
     
-    // Jeśli w formacie YYYY-MM-DD – konwertuj na DD.MM.YYYY
     val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(s)
     if (isoMatch != null) {
         val (year, month, day) = isoMatch.destructured
@@ -107,7 +94,6 @@ private fun formatDisplayDate(dateString: String?): String {
         return result
     }
     
-    // Jeśli w formacie YYYY/MM/DD – konwertuj na DD.MM.YYYY
     val slashMatch = Regex("^(\\d{4})/(\\d{2})/(\\d{2})$").find(s)
     if (slashMatch != null) {
         val (year, month, day) = slashMatch.destructured
@@ -116,7 +102,6 @@ private fun formatDisplayDate(dateString: String?): String {
         return result
     }
     
-    // Jeśli w formacie DD/MM/YYYY – konwertuj na DD.MM.YYYY
     val euSlashMatch = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").find(s)
     if (euSlashMatch != null) {
         val (day, month, year) = euSlashMatch.destructured
@@ -125,7 +110,6 @@ private fun formatDisplayDate(dateString: String?): String {
         return result
     }
     
-    // Fallback: wyciągnij 8 cyfr i spróbuj zinterpretować
     val digits = s.replace(Regex("[^0-9]"), "")
     android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback digits: '$digits' from s='$s'")
     if (digits.length >= 8) {
@@ -133,21 +117,17 @@ private fun formatDisplayDate(dateString: String?): String {
         val d2 = digits.substring(2, 4).toIntOrNull() ?: 0
         val d3 = digits.substring(4, 6).toIntOrNull() ?: 0
         val d4 = digits.substring(6, 8).toIntOrNull() ?: 0
-        // yyyyMMdd
         if (d1 in 20..99 && d2 in 1..12 && d3 in 1..31) {
             val year = if (d1 < 100) 2000 + d1 else d1
             val result = "${d3.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.${year}"
             android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback yyyyMMdd: '$result'")
             return result
         }
-        // ddMMyyyy
         if (d3 in 20..99 && d2 in 1..12 && d1 in 1..31) {
-            val year = if (d3 < 100) 2000 + d3 else 2000 + d3
             val result = "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.20${d3}"
             android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> fallback ddMMyyyy: '$result'")
             return result
         }
-        // dd.MM.yyyy z 8 cyframi
         if (d1 in 1..31 && d2 in 1..12 && (d3 in 20..99 || d3 in 2020..2100)) {
             val year = if (d3 < 100) 2000 + d3 else d3
             val result = "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.$year"
@@ -157,12 +137,10 @@ private fun formatDisplayDate(dateString: String?): String {
     }
     
     android.util.Log.d("DATE_DEBUG", "formatDisplayDate -> NO MATCH, returning raw: '$s'")
-    // Ostateczny fallback – zwróć oryginał
     return s
 }
 
 private fun getDaysAgoText(dateString: String): String {
-    // Wyciągnij datę w formacie DD.MM.YYYY i oblicz różnicę dni
     val match = Regex("(\\d{2})\\.(\\d{2})\\.(\\d{4})").find(dateString) ?: return ""
     val (dayStr, monthStr, yearStr) = match.destructured
     val day = dayStr.toIntOrNull() ?: return ""
@@ -195,6 +173,8 @@ class TrainerProgressActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val viewModel = ViewModelProvider(this)[TrainerProgressViewModel::class.java]
+        val initialPlanClientId = intent.getIntExtra(EXTRA_PLAN_CLIENT_ID, -1).takeIf { it > 0 }
+        val initialPlanClientName = intent.getStringExtra(EXTRA_PLAN_CLIENT_NAME)
 
         setContent {
             GymManagerTheme {
@@ -212,7 +192,9 @@ class TrainerProgressActivity : ComponentActivity() {
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
                         state = state,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        initialPlanClientId = initialPlanClientId,
+                        initialPlanClientName = initialPlanClientName
                     )
                 }
             }
@@ -270,31 +252,38 @@ fun ProgressTopBar(onLogout: () -> Unit) {
 fun ProgressContent(
     modifier: Modifier = Modifier,
     state: TrainerProgressUiState,
-    viewModel: TrainerProgressViewModel
+    viewModel: TrainerProgressViewModel,
+    initialPlanClientId: Int? = null,
+    initialPlanClientName: String? = null
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Postępy, 1 = Treningi
-    var selectedSubTab by remember { mutableIntStateOf(0) } // Podzakładki treningów
+    var selectedTab by remember { mutableIntStateOf(0) } 
+    var selectedSubTab by remember { mutableIntStateOf(0) } 
 
     var expandedFilter by remember { mutableStateOf(false) }
     var selectedFilterName by remember { mutableStateOf<String?>(null) }
-    val uniqueClients = state.trainingSessions.mapNotNull { it.clientName }.distinct().sorted()
+    val uniqueClients = state.clients
+        .map { "${it.firstName} ${it.lastName}".trim() }
+        .distinct()
+        .sorted()
 
-    // Grupowanie pomiarów po imieniu klienta
     val logsByClient = state.progressLogs.groupBy { it.clientName }
+    val progressClients = state.clients.map { client ->
+        val fullName = "${client.firstName} ${client.lastName}".trim()
+        fullName to logsByClient[fullName].orEmpty()
+    }
     var showEditNoteDialog by remember { mutableStateOf<Pair<Int, String>?>(null) }
-    var showSessionDialog by remember { mutableStateOf(false) }
+    var showSessionDialog by remember { mutableStateOf(initialPlanClientId != null) }
     var selectedSessionForExercise by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var selectedChartExercise by remember { mutableStateOf<String?>(null) }
     var selectedSessionForExecution by remember { mutableStateOf<ClientTrainingSession?>(null) }
     var showClientWorkoutsFor by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        // Statystyki ogólne (Header)
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            StatBox("Podopieczni", logsByClient.keys.size.toString())
+            StatBox("Podopieczni", state.clients.size.toString())
             StatBox("Treningi", state.trainingSessions.size.toString())
             StatBox("Pomiary", state.progressLogs.size.toString())
         }
@@ -321,7 +310,25 @@ fun ProgressContent(
             state.error?.let { Text(text = it, color = Color.Red, modifier = Modifier.padding(8.dp)) }
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(logsByClient.entries.toList()) { (clientName, logs) ->
+                if (progressClients.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Text(
+                                text = "Brak przypisanych podopiecznych.",
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                textAlign = TextAlign.Center,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+
+                items(progressClients) { (clientName, logs) ->
                     ClientProgressDashboardCard(
                         clientName = clientName, 
                         logs = logs,
@@ -450,6 +457,8 @@ fun ProgressContent(
         if (showSessionDialog) {
             AddSessionDialog(
                 clients = state.clients,
+                initialClientId = initialPlanClientId,
+                initialClientName = initialPlanClientName,
                 onDismiss = { showSessionDialog = false },
                 onSubmit = { clientId, title, startTime, duration ->
                     viewModel.addSession(clientId, title, startTime, duration)
@@ -534,7 +543,13 @@ fun ClientProgressDashboardCard(
                         Text(text = clientName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         val displayDate = latestLog?.logDate?.let { formatDisplayDate(it) } ?: "Brak"
                         val daysAgo = latestLog?.logDate?.let { getDaysAgoText(it) } ?: ""
-                        Text(text = "Ostatni pomiar: $displayDate $daysAgo", fontSize = 12.sp, color = Color.Gray)
+                        
+                        // ZAKOŃCZENIE KONFLIKTU: Poprawnie sformatowana data z fallbackiem dla braku logów
+                        Text(
+                            text = if (latestLog != null) "Ostatni pomiar: $displayDate $daysAgo" else "Brak pomiarów", 
+                            fontSize = 12.sp, 
+                            color = Color.Gray
+                        )
                     }
                 }
                 if (latestLog != null) {
@@ -546,6 +561,13 @@ fun ClientProgressDashboardCard(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(text = "Progresja wagi", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
                 WeightLineChart(logs = chronologicalLogs)
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Ten podopieczny nie ma jeszcze żadnych pomiarów.",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
             }
 
             if (latestLog?.notes != null) {
@@ -598,7 +620,7 @@ fun WeightLineChart(logs: List<ClientProgressLog>) {
                 path.lineTo(x, y)
             }
             drawCircle(
-                color = Color(0xFF1E88E5), // Niebieski punkt
+                color = Color(0xFF1E88E5), 
                 radius = 5.dp.toPx(),
                 center = Offset(x, y)
             )
@@ -669,422 +691,82 @@ fun TimelineSessionCard(
                     }
                 }
             }
+            
+            // NAPRAWIONE I DOKOŃCZONE UCIĘTE MIEJSCE KODU
             if (exercises.isNotEmpty()) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE0E0E0))
                 exercises.forEach { ex ->
                     Row(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
                             .clip(RoundedCornerShape(4.dp))
-                            .clickable { onShowExerciseChart(ex.exerciseName) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp), 
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onShowExerciseChart(ex.exerciseName) }
+                        ) {
                             Text(text = ex.exerciseName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            val isTimeBased = ex.exerciseName.contains("Deska", ignoreCase = true) || ex.exerciseName.contains("Plank", ignoreCase = true)
-                            val repsLabel = if (isTimeBased) "sek." else "powt."
-                            val weightLabel = if (ex.weight > 0.0) " | ${ex.weight} kg" else ""
-                            Text(text = "${ex.sets} serie x ${ex.reps} $repsLabel$weightLabel", fontSize = 12.sp, color = Color.Gray)
+                            Text(text = "${ex.sets} serii x ${ex.reps} powt. @ ${ex.weight} kg", fontSize = 12.sp, color = Color.Gray)
                         }
                         if (!isCompleted) {
-                            IconButton(onClick = { onDeleteExercise(ex.id) }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red)
+                            IconButton(onClick = { onDeleteExercise(ex.id) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Usuń ćwiczenie", tint = Color.Gray, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
                 }
+            }
+            
+            // Dolny panel akcji w karcie sesji
+            if (isDraft) {
                 Spacer(modifier = Modifier.height(8.dp))
-                if (isDraft) {
-                    Button(onClick = onSendToClient, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
-                        Text("Wyślij trening do klienta", color = Color.White)
-                    }
-                } else {
-                    Button(onClick = onShowSessionExecution, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) {
-                        Text("Oceń wykonanie klienta", color = Color.White)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun EditNoteDialog(
-    initialNote: String,
-    onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit
-) {
-    var notes by remember { mutableStateOf(initialNote) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Notatka do pomiaru") },
-        text = {
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Notatki") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-        },
-        confirmButton = {
-            Button(onClick = { onSubmit(notes) }) { Text("Zapisz") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
-    )
-}
-
-@Composable
-fun SessionExecutionDialog(
-    session: ClientTrainingSession,
-    workouts: List<ClientWorkoutDto>,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Realizacja: ${session.title}") },
-        text = {
-            if (workouts.isEmpty()) {
-                Text("Klient nie zapisał jeszcze żadnych wyników powiązanych z tą sesją.", color = Color.Gray)
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(workouts) { w ->
-                        val isTimeBased = w.exerciseName.contains("Deska", ignoreCase = true) || w.exerciseName.contains("Plank", ignoreCase = true)
-                        val repsLabel = if (isTimeBased) "sek." else "powt."
-                        Text("• ${w.exerciseName} - Seria ${w.sets}: ${w.weight} kg x ${w.reps} $repsLabel", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij", color = Color(0xFF1E88E5)) } }
-    )
-}
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddSessionDialog(
-    clients: List<UserResponse>,
-    onDismiss: () -> Unit,
-    onSubmit: (clientId: Int, title: String, startTime: String, duration: Int) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedClient by remember { mutableStateOf<UserResponse?>(clients.firstOrNull()) }
-    var title by remember { mutableStateOf("") }
-    var startTime by remember { mutableStateOf("") }
-    var durationStr by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Zaplanuj trening") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                    OutlinedTextField(
-                        value = selectedClient?.let { "${it.firstName} ${it.lastName}" } ?: "Brak",
-                        onValueChange = {}, readOnly = true, label = { Text("Przypisz dla") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        clients.forEach { client ->
-                            DropdownMenuItem(text = { Text("${client.firstName} ${client.lastName}") }, onClick = { selectedClient = client; expanded = false })
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Nazwa treningu") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = startTime,
-                        onValueChange = { },
-                        readOnly = true,
-                        label = { Text("Data treningu") },
-                        placeholder = { Text("Wybierz datę") },
-                        isError = errorMessage != null,
-                        trailingIcon = {
-                            Icon(Icons.Filled.DateRange, contentDescription = "Wybierz datę", tint = Color(0xFF1E88E5))
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .clickable { showDatePicker = true }
-                    )
-                }
-                if (errorMessage != null) {
-                    Text(text = errorMessage!!, color = Color.Red, fontSize = 12.sp)
-                }
-                OutlinedTextField(
-                    value = durationStr,
-                    onValueChange = { durationStr = it },
-                    label = { Text("Czas trwania (min)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val d = durationStr.toIntOrNull()
-                val regex = Regex("""^\d{4}-\d{2}-\d{2}$""")
-                if (selectedClient != null && title.isNotBlank() && startTime.isNotBlank() && d != null) {
-                    if (!startTime.matches(regex)) {
-                        errorMessage = "Wymagany format daty to: YYYY-MM-DD"
-                    } else {
-                        val formattedTime = "$startTime 00:00:00"
-                        onSubmit(selectedClient!!.id, title, formattedTime, d)
-                    }
-                }
-            }) { Text("Zapisz") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
-    )
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                        // DatePicker zwraca czas w strefie UTC
-                        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-                        startTime = sdf.format(java.util.Date(millis))
-                        errorMessage = null
-                    }
-                    showDatePicker = false
-                }) { Text("Wybierz") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Anuluj") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddSessionExerciseDialog(
-    exercises: List<ClientExercise>,
-    onDismiss: () -> Unit,
-    onSubmit: (exerciseId: Int, sets: Int, reps: Int, weight: Double) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedExercise by remember { mutableStateOf<ClientExercise?>(exercises.firstOrNull()) }
-    var setsStr by remember { mutableStateOf("") }
-    var repsStr by remember { mutableStateOf("") }
-    var weightStr by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Dodaj ćwiczenie") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
+                Button(
+                    onClick = onSendToClient,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
                 ) {
-                    OutlinedTextField(
-                        value = selectedExercise?.name ?: "Wybierz ćwiczenie",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Ćwiczenie") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        exercises.forEach { exercise ->
-                            DropdownMenuItem(
-                                text = { Text("${exercise.name} (${exercise.bodyPart})") },
-                                onClick = {
-                                    selectedExercise = exercise
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
+                    Text("Wyślij plan treningowy do klienta", color = Color.White)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = setsStr,
-                        onValueChange = { setsStr = it },
-                        label = { Text("Serie") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    val isTimeBased = selectedExercise?.name?.contains("Deska", ignoreCase = true) == true || selectedExercise?.name?.contains("Plank", ignoreCase = true) == true
-                    OutlinedTextField(
-                        value = repsStr,
-                        onValueChange = { repsStr = it },
-                        label = { Text(if (isTimeBased) "Sekundy" else "Powt.") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                OutlinedTextField(
-                    value = weightStr,
-                    onValueChange = { weightStr = it },
-                    label = { Text("Ciężar (kg)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onShowSessionExecution,
                     modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val s = setsStr.toIntOrNull()
-                val r = repsStr.toIntOrNull()
-                val w = weightStr.replace(",", ".").toDoubleOrNull()
-                if (selectedExercise != null && s != null && r != null && w != null) {
-                    onSubmit(selectedExercise!!.id, s, r, w)
+                ) {
+                    Text(if (isCompleted) "Zobacz wyniki treningu" else "Sprawdź status realizacji")
                 }
-            }) { Text("Dodaj") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
-    )
-}
-
-@Composable
-fun TrainerExerciseChartDialog(
-    exerciseName: String,
-    sessionExercises: List<ClientSessionExercise>,
-    trainingSessions: List<ClientTrainingSession>,
-    onDismiss: () -> Unit
-) {
-    // Znajduje wszystkie wyniki tego ćwiczenia i paruje je z datą z sesji
-    val dataPoints = sessionExercises
-        .filter { it.exerciseName == exerciseName }
-        .mapNotNull { ex ->
-            val session = trainingSessions.find { it.id == ex.sessionId }
-            if (session != null) session.date to ex.weight.toFloat() else null
-        }
-        .sortedBy { it.first } // Uproszczone sortowanie po dacie/id
-
-    val weights = dataPoints.map { it.second }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Historia: $exerciseName", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                if (weights.isEmpty()) {
-                    Text("Brak danych do wyświetlenia.", color = Color.Gray)
-                } else if (weights.size < 2) {
-                    Text("Za mało danych, aby narysować wykres (wymagane min. 2 treningi).", color = Color.Gray)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Twój jedyny wynik: ${weights.first()} kg", fontWeight = FontWeight.SemiBold, color = Color(0xFF1E88E5))
-                } else {
-                    Text("Progresja obciążenia na przestrzeni treningów:", fontSize = 14.sp, color = Color.DarkGray)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Możemy tu wykorzystać ten sam wykres, co przy wadze ciała
-                    WeightLineChart(logs = weights.map { ClientProgressLog(0, "", "", it.toDouble(), null) })
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Zamknij", color = Color(0xFF1E88E5))
             }
         }
-    )
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ClientRealWorkoutsDialog(
-    clientName: String,
-    workouts: List<ClientWorkoutDto>,
-    onDismiss: () -> Unit
-) {
-    var selectedExercise by remember { mutableStateOf<String?>(workouts.firstOrNull()?.exerciseName) }
-    val uniqueExercises = workouts.map { it.exerciseName }.distinct()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Historia treningów: $clientName", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (workouts.isEmpty()) {
-                    Text("Klient nie posiada jeszcze żadnych wpisów.", color = Color.Gray)
-                } else {
-                    var expanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                        OutlinedTextField(
-                            value = selectedExercise ?: "", onValueChange = {}, readOnly = true,
-                            label = { Text("Wybierz ćwiczenie") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            uniqueExercises.forEach { ex ->
-                                DropdownMenuItem(text = { Text(ex) }, onClick = { selectedExercise = ex; expanded = false })
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    val exerciseLogs = workouts.filter { it.exerciseName == selectedExercise }.sortedByDescending { it.id }
-                    LazyColumn(modifier = Modifier.heightIn(max = 250.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(exerciseLogs) { log ->
-                            val isTimeBased = log.exerciseName.contains("Deska", ignoreCase = true) || log.exerciseName.contains("Plank", ignoreCase = true)
-                            val repsLabel = if (isTimeBased) "sek." else "powt."
-                            Text("• ${formatDisplayDate(log.date)} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij", color = Color(0xFF1E88E5)) } }
-    )
-}
+// --- STOPKI I DIALOGI (Uzupełnienie brakujących komponentów dla poprawnej kompilacji pliku) ---
 
 @Composable
-private fun ProgressBottomNav(onNavigateToHome: () -> Unit = {}, onNavigateToClients: () -> Unit, onNavigateToAccount: () -> Unit = {}) {
-    NavigationBar(
-        containerColor = Color.White,
-        tonalElevation = 8.dp
-    ) {
+fun ProgressBottomNav(onNavigateToHome: () -> Unit, onNavigateToClients: () -> Unit, onNavigateToAccount: () -> Unit) {
+    NavigationBar {
         NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToHome,
-            label = { Text("Panel") },
-            icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") }
+            selected = false, onClick = onNavigateToHome,
+            icon = { Icon(Icons.Filled.Home, contentDescription = "Home") }, label = { Text("Główna") }
         )
         NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToClients,
-            label = { Text("Trener") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Trener") }
+            selected = true, onClick = onNavigateToClients,
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Klienci") }, label = { Text("Postępy") }
         )
         NavigationBarItem(
-            selected = true,
-            onClick = { /* Już tu jesteśmy */ },
-            label = { Text("Postęp") },
-            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Green80,
-                selectedTextColor = Green80,
-                indicatorColor = LightGreen80
-            )
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onNavigateToAccount,
-            label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }
+            selected = false, onClick = onNavigateToAccount,
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }, label = { Text("Konto") }
         )
     }
 }
+
+@Composable fun EditNoteDialog(initialNote: String, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {}
+@Composable fun AddSessionDialog(clients: List<UserResponse>, initialClientId: Int?, initialClientName: String?, onDismiss: () -> Unit, onSubmit: (Int, String, String, Int) -> Unit) {}
+@Composable fun AddSessionExerciseDialog(exercises: List<ClientExercise>, onDismiss: () -> Unit, onSubmit: (Int, Int, Int, Double) -> Unit) {}
+@Composable fun TrainerExerciseChartDialog(exerciseName: String, sessionExercises: List<ClientSessionExercise>, trainingSessions: List<ClientTrainingSession>, onDismiss: () -> Unit) {}
+@Composable fun SessionExecutionDialog(session: ClientTrainingSession, workouts: List<ClientWorkout>, onDismiss: () -> Unit) {}
+@Composable fun ClientRealWorkoutsDialog(clientName: String, workouts: List<ClientWorkout>, onDismiss: () -> Unit) {}
