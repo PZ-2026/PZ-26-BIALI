@@ -19,6 +19,9 @@ import java.security.Key;
 import java.util.Date;
 import java.util.stream.Collectors;
 
+/**
+ * Generowanie i walidacja tokenów JWT.
+ */
 @Service
 public class JwtService {
 
@@ -34,6 +37,12 @@ public class JwtService {
         this.expirationTime = expirationTime;
     }
 
+    /**
+     * Generuje token JWT dla zalogowanego użytkownika.
+     *
+     * @param authentication dane uwierzytelnienia Spring Security
+     * @return podpisany token JWT z emailem, rolami i imieniem
+     */
     public String generateToken(Authentication authentication) {
         String email = authentication.getName();
         
@@ -58,14 +67,33 @@ public class JwtService {
                 .compact();
     }
 
+    /**
+     * Zwraca pusty ciąg zamiast null.
+     *
+     * @param value tekst do zabezpieczenia
+     * @return wartość lub pusty ciąg
+     */
         private String safe(String value) {
         return value == null ? "" : value;
         }
 
+    /**
+     * Wyciąga email (subject) z tokenu JWT.
+     *
+     * @param token token JWT
+     * @return adres email użytkownika
+     */
     public String extractEmail(String token) {
         return extractAllClaims(token).getSubject();
     }
 
+    /**
+     * Sprawdza, czy token JWT jest ważny dla danego użytkownika.
+     *
+     * @param token token JWT
+     * @param userDetails dane użytkownika do porównania
+     * @return true gdy token poprawny i nie wygasł
+     */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             String email = extractEmail(token);

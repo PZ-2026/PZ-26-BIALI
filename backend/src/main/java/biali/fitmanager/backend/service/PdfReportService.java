@@ -24,6 +24,9 @@ import com.lowagie.text.pdf.PdfWriter;
 import biali.fitmanager.backend.model.AppUser;
 import biali.fitmanager.backend.repository.AppUserRepository;
 
+/**
+ * Generowanie raportów PDF dla panelu administracyjnego.
+ */
 @Service
 public class PdfReportService {
 
@@ -36,6 +39,12 @@ public class PdfReportService {
         this.trainerClientRepository = trainerClientRepository;
     }
 
+    /**
+     * Generuje raport PDF z listą użytkowników, statystykami i przypisaniami trenerów.
+     *
+     * @param generatedBy email lub nazwa autora raportu
+     * @return tablica bajtów pliku PDF
+     */
     public byte[] generateUsersReport(String generatedBy) {
         List<AppUser> users = appUserRepository.findAll();
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -163,6 +172,12 @@ public class PdfReportService {
         }
     }
 
+    /**
+     * Dodaje nagłówek kolumny do tabeli PDF.
+     *
+     * @param table tabela PDF
+     * @param text tekst nagłówka
+     */
     private void addHeaderCell(PdfPTable table, String text) {
         Font head = new Font(Font.HELVETICA, 11, Font.BOLD);
         PdfPCell cell = new PdfPCell(new Phrase(text, head));
@@ -171,11 +186,23 @@ public class PdfReportService {
         table.addCell(cell);
     }
 
+    /**
+     * Formatuje datę utworzenia konta do wyświetlenia w PDF.
+     *
+     * @param dt data i czas
+     * @return sformatowany ciąg lub pusty gdy null
+     */
     private String formatCreatedAt(LocalDateTime dt) {
         if (dt == null) return "";
         return dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
+    /**
+     * Formatuje saldo konta z jednostką PLN.
+     *
+     * @param b kwota
+     * @return sformatowane saldo (np. "0.00 PLN")
+     */
     private String formatBalance(BigDecimal b) {
         if (b == null) return "0.00";
         return b.setScale(2, RoundingMode.HALF_UP).toString() + " PLN";

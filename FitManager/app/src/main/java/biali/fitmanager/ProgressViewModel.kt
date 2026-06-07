@@ -8,6 +8,7 @@ import biali.fitmanager.network.ProgressSummaryResponse
 import biali.fitmanager.ClientWorkoutDto
 import biali.fitmanager.network.ClientProgressLogDto
 import biali.fitmanager.network.LogWeightRequest
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,6 +80,11 @@ class ProgressViewModel : ViewModel() {
     }
 
     fun updateWorkout(id: Int, weight: Double, sets: Int, reps: Int) {
+        InputValidator.validateWeight(weight)?.let { error ->
+            _state.update { it.copy(error = error) }
+            return
+        }
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             val request = LogWorkoutRequest(0, weight, sets, reps, null) // exerciseId and sessionId are ignored in backend update query
@@ -91,6 +97,11 @@ class ProgressViewModel : ViewModel() {
     }
 
     fun logWeight(weight: Double) {
+        InputValidator.validateWeight(weight)?.let { error ->
+            _state.update { it.copy(error = error) }
+            return
+        }
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             when (val result = repository.addClientProgressLog(LogWeightRequest(weight))) {

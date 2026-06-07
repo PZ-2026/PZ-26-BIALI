@@ -24,6 +24,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import biali.fitmanager.backend.model.AppUser;
 import biali.fitmanager.backend.repository.AppUserRepository;
 
+/**
+ * Testy jednostkowe {@link JwtService}: generowanie i walidacja tokenów JWT.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Testy JwtService")
 class JwtServiceTest {
@@ -40,6 +43,12 @@ class JwtServiceTest {
         jwtService = new JwtService(appUserRepository, SECRET, 60_000L);
     }
 
+    /**
+     * Sprawdza generowanie tokenu JWT i jego poprawną walidację dla tego samego użytkownika.
+     *
+     * @param authentication Authentication z emailem user@example.com i rolą CLIENT
+     * @return wygenerowany token JWT, extractEmail zwraca email, isTokenValid zwraca true
+     */
     @Test
     @DisplayName("Generowanie tokenu i walidacja dla tego samego uzytkownika")
     void generateTokenAndValidateTokenForSameUser() {
@@ -67,6 +76,12 @@ class JwtServiceTest {
         assertTrue(jwtService.isTokenValid(token, userDetails));
     }
 
+    /**
+     * Weryfikuje, że token wystawiony dla jednego użytkownika jest nieważny dla innego.
+     *
+     * @param authentication Authentication dla user@example.com
+     * @return isTokenValid zwraca false dla UserDetails other@example.com
+     */
     @Test
     @DisplayName("Token jest niewazny dla innego uzytkownika")
     void tokenIsInvalidForDifferentUser() {
@@ -87,6 +102,12 @@ class JwtServiceTest {
         assertFalse(jwtService.isTokenValid(token, otherUser));
     }
 
+    /**
+     * Potwierdza odrzucenie niepoprawnego ciągu jako tokenu JWT.
+     *
+     * @param token niepoprawny ciąg "this-is-not-a-jwt"
+     * @return isTokenValid zwraca false
+     */
     @Test
     @DisplayName("Niepoprawny token zwraca false")
     void invalidTokenReturnsFalse() {

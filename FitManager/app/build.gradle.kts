@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "biali.fitmanager"
-    compileSdk = 36
+    compileSdk {
+        version = release(36)
+    }
 
     defaultConfig {
         applicationId = "biali.fitmanager"

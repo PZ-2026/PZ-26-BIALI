@@ -51,6 +51,7 @@ import androidx.core.content.FileProvider
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.ProgressSummaryResponse
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.launch
 
 data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val sets: Int, val reps: Int, val sessionId: Int? = null)
@@ -348,6 +349,9 @@ fun ProgressScreen(
                                 is ApiResult.Success -> {
                                     generateAndOpenProgressPdf(context, res.data)
                                 }
+                                is ApiResult.Unauthorized -> {
+                                    Toast.makeText(context, "Brak uprawnień.", Toast.LENGTH_SHORT).show()
+                                }
                                 is ApiResult.Error -> {
                                     Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
                                 }
@@ -383,23 +387,36 @@ fun ProgressScreen(
 
         if (showWeightDialog) {
             var weightStr by remember { mutableStateOf("") }
+            var weightError by remember { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { showWeightDialog = false },
                 title = { Text("Zapisz dzisiejszą wagę") },
                 text = {
-                    OutlinedTextField(
-                        value = weightStr, onValueChange = { weightStr = it },
-                        label = { Text("Waga (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = weightStr,
+                            onValueChange = {
+                                weightStr = it
+                                weightError = null
+                            },
+                            label = { Text("Waga (kg)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = weightError != null,
+                            supportingText = weightError?.let { msg -> { Text(msg, color = MaterialTheme.colorScheme.error) } }
+                        )
+                    }
                 },
                 confirmButton = {
                     Button(onClick = {
                         val w = weightStr.replace(",", ".").toDoubleOrNull()
-                        if (w != null) {
-                            viewModel.logWeight(w)
-                            showWeightDialog = false
+                        val validationError = InputValidator.validateWeight(w)
+                        if (validationError != null) {
+                            weightError = validationError
+                            return@Button
                         }
+                        viewModel.logWeight(w!!)
+                        showWeightDialog = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))) { Text("Zapisz", color = Color.White) }
                 },
                 dismissButton = { TextButton(onClick = { showWeightDialog = false }) { Text("Anuluj", color = Color.Gray) } }
@@ -525,6 +542,7 @@ fun EditWorkoutDialog(
     var weightStr by remember { mutableStateOf(log.weight.toString()) }
     var setsStr by remember { mutableStateOf(log.sets.toString()) }
     var repsStr by remember { mutableStateOf(log.reps.toString()) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -532,8 +550,12 @@ fun EditWorkoutDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = weightStr, onValueChange = { weightStr = it },
-                    label = { Text("Ciężar (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    value = weightStr, onValueChange = {
+                        weightStr = it
+                        validationError = null
+                    },
+                    label = { Text("Ciężar (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = validationError != null
                 )
                 OutlinedTextField(
                     value = setsStr, onValueChange = { setsStr = it },
@@ -543,6 +565,7 @@ fun EditWorkoutDialog(
                     value = repsStr, onValueChange = { repsStr = it },
                     label = { Text("Powtórzenia") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
+                validationError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
             }
         },
         confirmButton = {
@@ -550,8 +573,15 @@ fun EditWorkoutDialog(
                 val w = weightStr.replace(",", ".").toDoubleOrNull()
                 val s = setsStr.toIntOrNull()
                 val r = repsStr.toIntOrNull()
+                val weightValidationError = InputValidator.validateWeight(w)
+                if (weightValidationError != null) {
+                    validationError = weightValidationError
+                    return@Button
+                }
                 if (w != null && s != null && r != null) {
                     onSubmit(w, s, r)
+                } else {
+                    validationError = "Podaj poprawne wartości serii i powtórzeń."
                 }
             }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) { Text("Zapisz", color = Color.White) }
         },

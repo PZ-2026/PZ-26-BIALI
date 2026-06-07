@@ -12,6 +12,9 @@ import java.util.List;
 
 import biali.fitmanager.backend.repository.PaymentRepository;
 
+/**
+ * Panel trenera: sesje, ćwiczenia, postępy klientów i przychody.
+ */
 @RestController
 @RequestMapping("/api/trainer")
 public class TrainerDashboardController {
@@ -32,6 +35,12 @@ public class TrainerDashboardController {
     public record SessionExerciseDto(int id, int sessionId, String exerciseName, int sets, int reps, Double weight) {}
     public record ClientWorkoutDto(int id, String clientName, String exerciseName, Double weight, int sets, int reps, String date, Integer sessionId) {}
 
+    /**
+     * Zwraca logi postępów wszystkich klientów trenera.
+     *
+     * @param principal zalogowany trener
+     * @return lista {@link ProgressLogDto}
+     */
     @GetMapping("/progress")
     public ResponseEntity<List<ProgressLogDto>> getProgress(Principal principal) {
         String email = principal.getName();
@@ -48,6 +57,12 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(logs);
     }
 
+    /**
+     * Zwraca sesje treningowe utworzone przez trenera.
+     *
+     * @param principal zalogowany trener
+     * @return lista {@link TrainingSessionDto}
+     */
     @GetMapping("/sessions")
     public ResponseEntity<List<TrainingSessionDto>> getSessions(Principal principal) {
         String email = principal.getName();
@@ -64,12 +79,26 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(sessions);
     }
 
+    /**
+     * Aktualizuje notatkę przy logu postępu klienta.
+     *
+     * @param id identyfikator logu postępu
+     * @param req nowa treść notatki (notes)
+     * @return 200 po sukcesie
+     */
     @PutMapping("/progress/{id}/notes")
     public ResponseEntity<?> updateProgressNote(@PathVariable int id, @RequestBody UpdateProgressNoteRequest req) {
         jdbcTemplate.update("UPDATE progress_logs SET notes = ? WHERE id = ?", req.notes(), id);
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Tworzy nową sesję treningową i opcjonalnie rezerwację DRAFT dla klienta.
+     *
+     * @param principal zalogowany trener
+     * @param req clientId, title, startTime, durationMinutes
+     * @return 200 po sukcesie
+     */
     @Transactional
     @PostMapping("/sessions")
     public ResponseEntity<?> addSession(Principal principal, @RequestBody CreateSessionRequest req) {
@@ -83,18 +112,35 @@ public class TrainerDashboardController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Wysyła sesję do klienta (zmienia status rezerwacji DRAFT na CONFIRMED).
+     *
+     * @param sessionId identyfikator sesji
+     * @return 200 po sukcesie
+     */
     @PostMapping("/sessions/{sessionId}/send")
     public ResponseEntity<?> sendSessionToClient(@PathVariable int sessionId) {
         jdbcTemplate.update("UPDATE reservations SET status = 'CONFIRMED' WHERE session_id = ? AND status = 'DRAFT'", sessionId);
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Usuwa sesję treningową.
+     *
+     * @param sessionId identyfikator sesji
+     * @return 200 po sukcesie
+     */
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<?> deleteSession(@PathVariable int sessionId) {
         jdbcTemplate.update("DELETE FROM training_sessions WHERE id = ?", sessionId);
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Zwraca katalog dostępnych ćwiczeń.
+     *
+     * @return lista {@link ExerciseDto}
+     */
     @GetMapping("/exercises")
     public ResponseEntity<List<ExerciseDto>> getExercises() {
         String sql = "SELECT id, name, body_part FROM exercises ORDER BY body_part, name";
@@ -103,6 +149,12 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(exercises);
     }
 
+    /**
+     * Zwraca ćwiczenia przypisane do sesji trenera.
+     *
+     * @param principal zalogowany trener
+     * @return lista {@link SessionExerciseDto}
+     */
     @GetMapping("/sessions/exercises")
     public ResponseEntity<List<SessionExerciseDto>> getAllSessionExercises(Principal principal) {
         String email = principal.getName();
@@ -116,6 +168,13 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(sessionExercises);
     }
 
+    /**
+     * Dodaje ćwiczenie do sesji treningowej.
+     *
+     * @param sessionId identyfikator sesji
+     * @param req exerciseId, sets, reps, weight
+     * @return 200 po sukcesie
+     */
     @PostMapping("/sessions/{sessionId}/exercises")
     public ResponseEntity<?> addSessionExercise(@PathVariable int sessionId, @RequestBody AddSessionExerciseRequest req) {
         String sql = "INSERT INTO session_exercises (session_id, exercise_id, sets, reps, weight) VALUES (?, ?, ?, ?, ?)";
@@ -123,12 +182,24 @@ public class TrainerDashboardController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Usuwa ćwiczenie z sesji treningowej.
+     *
+     * @param id identyfikator wpisu session_exercises
+     * @return 200 po sukcesie
+     */
     @DeleteMapping("/sessions/exercises/{id}")
     public ResponseEntity<?> deleteSessionExercise(@PathVariable int id) {
         jdbcTemplate.update("DELETE FROM session_exercises WHERE id = ?", id);
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Zwraca historię treningów klientów przypisanych do trenera.
+     *
+     * @param principal zalogowany trener
+     * @return lista {@link ClientWorkoutDto}
+     */
     @GetMapping("/client-workouts")
     public ResponseEntity<List<ClientWorkoutDto>> getClientWorkouts(Principal principal) {
         String email = principal.getName();
@@ -142,6 +213,12 @@ public class TrainerDashboardController {
         return ResponseEntity.ok(workouts);
     }
 
+    /**
+     * Zwraca łączny przychód trenera z wynajmów (trainer rentals).
+     *
+     * @param principal zalogowany trener
+     * @return suma przychodów (Double, 0.0 gdy brak płatności)
+     */
     @GetMapping("/revenue")
     public ResponseEntity<Double> getTrainerRevenue(Principal principal) {
         String email = principal.getName();

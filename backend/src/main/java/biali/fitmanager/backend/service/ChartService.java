@@ -18,6 +18,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Agregacja danych statystycznych do wykresów w panelu admina.
+ */
 @Service
 public class ChartService {
 
@@ -36,6 +39,11 @@ public class ChartService {
         this.trainerClientRepository = trainerClientRepository;
     }
 
+    /**
+     * Zbiera wszystkie dane wykresów w jednej odpowiedzi.
+     *
+     * @return {@link ChartDataResponse} z przychodami, karnetami, użytkownikami i sprzedażą typów
+     */
     public ChartDataResponse getChartData() {
         // Get all data
         List<ChartDataResponse.DailyRevenue> revenueTrend = getRevenueTrend();
@@ -46,7 +54,11 @@ public class ChartService {
         return new ChartDataResponse(revenueTrend, membershipStats, userStats, membershipTypeSales);
     }
 
-    // Revenue trend - last 30 days
+    /**
+     * Oblicza dzienny przychód z ostatnich 30 dni.
+     *
+     * @return lista {@link ChartDataResponse.DailyRevenue}
+     */
     private List<ChartDataResponse.DailyRevenue> getRevenueTrend() {
         LocalDate thirtyDaysAgo = LocalDate.now().minusDays(30);
         List<Payment> payments = paymentRepository.findAll().stream()
@@ -75,7 +87,11 @@ public class ChartService {
         return result;
     }
 
-    // Membership statistics
+    /**
+     * Zlicza karnety według statusu i łączny przychód.
+     *
+     * @return {@link ChartDataResponse.MembershipStats}
+     */
     private ChartDataResponse.MembershipStats getMembershipStats() {
         List<Membership> memberships = membershipRepository.findAll();
         
@@ -92,7 +108,11 @@ public class ChartService {
         return new ChartDataResponse.MembershipStats(active, expired, cancelled, totalRevenue);
     }
 
-    // User statistics
+    /**
+     * Zlicza klientów, trenerów i aktywne przypisania.
+     *
+     * @return {@link ChartDataResponse.UserStats}
+     */
     private ChartDataResponse.UserStats getUserStats() {
         List<AppUser> allUsers = appUserRepository.findAll();
         
@@ -120,7 +140,11 @@ public class ChartService {
         );
     }
 
-    // Membership type sales
+    /**
+     * Grupuje sprzedaż karnetów według typu.
+     *
+     * @return lista {@link ChartDataResponse.MembershipTypeSales}
+     */
     private List<ChartDataResponse.MembershipTypeSales> getMembershipTypeSales() {
         List<Membership> memberships = membershipRepository.findAll();
 

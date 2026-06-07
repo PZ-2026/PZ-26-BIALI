@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.RestController;
 import biali.fitmanager.backend.dto.ChartDataResponse;
 import biali.fitmanager.backend.service.ChartService;
 
+/**
+ * Dane statystyczne do wykresów w panelu admina.
+ */
 @RestController
 @RequestMapping("/api/admin/charts")
 public class ChartController {
@@ -17,6 +20,11 @@ public class ChartController {
         this.chartService = chartService;
     }
 
+    /**
+     * Zwraca zagregowane dane do wykresów (przychody, karnety, użytkownicy).
+     *
+     * @return 200 z {@link ChartDataResponse}
+     */
     @GetMapping("/data")
     public ResponseEntity<ChartDataResponse> getChartData() {
         ChartDataResponse data = chartService.getChartData();

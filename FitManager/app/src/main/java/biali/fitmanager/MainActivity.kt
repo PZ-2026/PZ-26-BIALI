@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import biali.fitmanager.network.LoginRequest
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.SessionManager
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.launch
 
 
@@ -40,13 +41,15 @@ class MainActivity : AppCompatActivity() {
         // Obsługa kliknięcia "Zaloguj się"
         btnLogin.setOnClickListener {
             val email = etEmail.text.toString().trim()
-            val password = etPassword.text.toString().trim()
+            val password = etPassword.text.toString()
 
-            if (email.isNotEmpty() && password.isNotEmpty()) {
-                performLogin(email, password)
-            } else {
-                Toast.makeText(this, "Wpisz dane logowania!", Toast.LENGTH_SHORT).show()
+            val validationError = InputValidator.validateLogin(email, password)
+            if (validationError != null) {
+                Toast.makeText(this, validationError, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
+
+            performLogin(email, password)
         }
 
         // Obsługa kliknięcia "Zarejestruj się"

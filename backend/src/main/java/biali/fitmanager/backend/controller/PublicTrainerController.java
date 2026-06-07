@@ -26,6 +26,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import biali.fitmanager.backend.repository.AppUserRepository;
 
+/**
+ * Publiczna lista trenerów i wybór/wypisanie trenera przez klienta.
+ */
 @RestController
 @RequestMapping("/api/trainers")
 public class PublicTrainerController {
@@ -47,11 +50,22 @@ public class PublicTrainerController {
         this.paymentRepository = paymentRepository;
     }
 
+    /**
+     * Zwraca listę wszystkich trenerów.
+     *
+     * @return lista {@link UserResponse}
+     */
     @GetMapping
     public List<UserResponse> getAllTrainers() {
         return appUserRepository.findAllByRole(ROLE_TRAINER).stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Zwraca trenera po ID.
+     *
+     * @param id identyfikator trenera
+     * @return 200 z {@link UserResponse}, 404 gdy nie znaleziono
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getTrainerById(@PathVariable Integer id) {
         return appUserRepository.findByIdAndRole(id, ROLE_TRAINER)
@@ -60,6 +74,13 @@ public class PublicTrainerController {
                         .body(new AuthErrorResponse("Trainer not found")));
     }
 
+    /**
+     * Klient wybiera trenera (płatność 199 zł z salda, wynajem na 30 dni).
+     *
+     * @param trainerId identyfikator trenera
+     * @param authentication zalogowany klient
+     * @return 201 po sukcesie, 400 przy braku środków, 403/404/409 przy błędach
+     */
     @PostMapping("/{id}/choose")
     @Transactional
     public ResponseEntity<?> chooseTrainer(@PathVariable("id") Integer trainerId, Authentication authentication) {
@@ -120,6 +141,13 @@ public class PublicTrainerController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    /**
+     * Klient rezygnuje z aktywnego wynajmu trenera.
+     *
+     * @param trainerId identyfikator trenera
+     * @param authentication zalogowany klient
+     * @return 204 po sukcesie, 404 gdy brak aktywnego wynajmu
+     */
     @DeleteMapping("/{id}/choose")
     @Transactional
     public ResponseEntity<?> resignTrainer(@PathVariable("id") Integer trainerId, Authentication authentication) {
@@ -150,6 +178,12 @@ public class PublicTrainerController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Mapuje encję trenera na DTO odpowiedzi.
+     *
+     * @param user encja AppUser
+     * @return {@link UserResponse}
+     */
     private UserResponse toResponse(AppUser user) {
         return new UserResponse(
                 user.getId(),

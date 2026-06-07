@@ -20,6 +20,7 @@ import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.TopUpRequest
 import biali.fitmanager.network.ApiResult
+import biali.fitmanager.validation.InputValidator
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
@@ -184,8 +185,9 @@ fun WalletContent(modifier: Modifier = Modifier) {
 
                     Button(onClick = {
                         val parsed = amountText.replace(',', '.').toDoubleOrNull()
-                        if (parsed == null || parsed <= 0.0) {
-                            message = "Wprowadź poprawną kwotę"
+                        val validationError = InputValidator.validateTopUpAmount(parsed)
+                        if (validationError != null) {
+                            message = validationError
                             return@Button
                         }
 
@@ -208,7 +210,7 @@ fun WalletContent(modifier: Modifier = Modifier) {
 
                             if (userId == null) return@launch
 
-                            when (val res = repository.topUpUser(userId, TopUpRequest(amount = parsed))) {
+                            when (val res = repository.topUpUser(userId, TopUpRequest(amount = parsed!!))) {
                                 is ApiResult.Success -> {
                                     when (val updated = repository.getMe()) {
                                         is ApiResult.Success -> {

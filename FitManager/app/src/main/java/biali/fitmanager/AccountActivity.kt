@@ -72,6 +72,7 @@ import biali.fitmanager.network.ProgressSummaryResponse
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.UserUpsertRequest
 import biali.fitmanager.ui.theme.Green80
+import biali.fitmanager.validation.InputValidator
 import biali.fitmanager.ui.theme.LightGreen80
 import biali.fitmanager.ui.theme.GymManagerTheme
 import kotlinx.coroutines.launch
@@ -327,6 +328,7 @@ private fun AccountScreen(
     var editFirstName by remember { mutableStateOf("") }
     var editLastName by remember { mutableStateOf("") }
     var editPhoneNumber by remember { mutableStateOf("") }
+    var editCurrentPassword by remember { mutableStateOf("") }
     var editPassword by remember { mutableStateOf("") }
     var editConfirmPassword by remember { mutableStateOf("") }
     var isSavingProfile by remember { mutableStateOf(false) }
@@ -427,9 +429,18 @@ private fun AccountScreen(
         )
 
         Text(
-            text = "Pozostaw hasło puste, jeśli nie chcesz go zmieniać.",
+            text = "Aby zmienić hasło, podaj aktualne hasło i nowe hasło (min. ${InputValidator.MIN_PASSWORD_LENGTH} znaków).",
             fontSize = 13.sp,
             color = Color.Gray
+        )
+
+        OutlinedTextField(
+            value = editCurrentPassword,
+            onValueChange = { editCurrentPassword = it },
+            label = { Text("Aktualne hasło") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
 
         OutlinedTextField(
@@ -452,29 +463,66 @@ private fun AccountScreen(
 
         Button(
             onClick = {
-                if (editPassword != editConfirmPassword) {
-                    dialogMessage = "Hasła nie są zgodne."
+                val profileError = InputValidator.validateProfileUpdate(
+                    firstName = editFirstName.trim(),
+                    lastName = editLastName.trim(),
+                    phone = editPhoneNumber.trim().ifBlank { null }
+                )
+                if (profileError != null) {
+                    dialogMessage = profileError
                     return@Button
+                }
+
+                val changingPassword = editPassword.isNotBlank() || editConfirmPassword.isNotBlank()
+                if (changingPassword) {
+                    val passwordError = InputValidator.validatePasswordChange(
+                        currentPassword = editCurrentPassword,
+                        newPassword = editPassword,
+                        confirmPassword = editConfirmPassword
+                    )
+                    if (passwordError != null) {
+                        dialogMessage = passwordError
+                        return@Button
+                    }
                 }
 
                 isSavingProfile = true
                 coroutineScope.launch {
                     val request = UserUpsertRequest(
                         email = profile?.email ?: "",
-                        firstName = editFirstName,
-                        lastName = editLastName,
-                        phoneNumber = editPhoneNumber.ifBlank { null },
-                        password = editPassword.ifBlank { null },
+                        firstName = editFirstName.trim(),
+                        lastName = editLastName.trim(),
+                        phoneNumber = editPhoneNumber.trim().ifBlank { null },
+                        password = null,
                         role = profile?.role ?: SessionManager.getRole() ?: ""
                     )
 
                     when (val result = repository.updateOwnProfile(profile?.id ?: 0, request)) {
                         is ApiResult.Success -> {
-                            Toast.makeText(context, "Dane zaktualizowane pomyślnie.", Toast.LENGTH_SHORT).show()
-                            if (editPassword.isNotBlank()) {
-                                onLogout()
-                                return@launch
+                            if (changingPassword) {
+                                when (val passwordResult = repository.changeMyPassword(
+                                    ChangePasswordRequest(editCurrentPassword, editPassword)
+                                )) {
+                                    is ApiResult.Success -> {
+                                        Toast.makeText(
+                                            context,
+                                            "Dane i hasło zaktualizowane. Zaloguj się ponownie.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        onLogout()
+                                        return@launch
+                                    }
+                                    is ApiResult.Unauthorized -> {
+                                        dialogMessage = "Sesja wygasła. Zaloguj się ponownie."
+                                    }
+                                    is ApiResult.Error -> {
+                                        dialogMessage = passwordResult.message
+                                    }
+                                }
+                            } else {
+                                Toast.makeText(context, "Dane zaktualizowane pomyślnie.", Toast.LENGTH_SHORT).show()
                             }
+                            editCurrentPassword = ""
                             editPassword = ""
                             editConfirmPassword = ""
                         }

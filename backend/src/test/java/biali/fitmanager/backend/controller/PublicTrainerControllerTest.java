@@ -31,6 +31,9 @@ import biali.fitmanager.backend.repository.PaymentRepository;
 import biali.fitmanager.backend.repository.TrainerClientRepository;
 import biali.fitmanager.backend.repository.TrainerRentalRepository;
 
+/**
+ * Testy jednostkowe {@link PublicTrainerController}: wybór trenera przez klienta.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Testy kontrolera publicznego trenerow")
 class PublicTrainerControllerTest {
@@ -62,6 +65,13 @@ class PublicTrainerControllerTest {
         );
     }
 
+    /**
+     * Weryfikuje odmowę wyboru trenera dla użytkownika bez roli CLIENT.
+     *
+     * @param trainerId identyfikator trenera (2)
+     * @param authentication token JWT użytkownika z rolą TRAINER
+     * @return status 403, {@link AuthErrorResponse} "Only clients can choose a trainer"
+     */
     @Test
     @DisplayName("Wybor trenera zwraca 403 gdy uzytkownik nie jest klientem")
     void chooseTrainerReturnsForbiddenWhenUserIsNotClient() {
@@ -78,6 +88,13 @@ class PublicTrainerControllerTest {
         assertEquals("Only clients can choose a trainer", body.getMessage());
     }
 
+    /**
+     * Sprawdza odrzucenie wyboru trenera przy niewystarczającym saldzie.
+     *
+     * @param trainerId identyfikator trenera (9)
+     * @param authentication token JWT klienta z saldem 100 PLN
+     * @return status 400, {@link AuthErrorResponse} "Insufficient funds", brak zapisu rental/payment
+     */
     @Test
     @DisplayName("Wybor trenera zwraca 400 gdy saldo zbyt niskie")
     void chooseTrainerReturnsBadRequestWhenBalanceIsTooLow() {
@@ -99,6 +116,13 @@ class PublicTrainerControllerTest {
         verify(paymentRepository, never()).save(any(Payment.class));
     }
 
+    /**
+     * Potwierdza utworzenie wynajmu trenera, płatności i relacji trener-klient.
+     *
+     * @param trainerId identyfikator trenera (5)
+     * @param authentication token JWT klienta z saldem 500 PLN
+     * @return status 201, zapis TrainerRental (ACTIVE), Payment (199 PLN) i TrainerClient
+     */
     @Test
     @DisplayName("Wybor trenera tworzy rental, platnosc i relacje")
     void chooseTrainerCreatesRentalPaymentAndRelation() {
@@ -126,7 +150,7 @@ class PublicTrainerControllerTest {
 
         ArgumentCaptor<AppUser> userCaptor = ArgumentCaptor.forClass(AppUser.class);
         verify(appUserRepository).save(userCaptor.capture());
-        assertEquals(new BigDecimal("300.01"), userCaptor.getValue().getAccountBalance());
+        assertEquals(new BigDecimal("301.00"), userCaptor.getValue().getAccountBalance());
 
         ArgumentCaptor<TrainerRental> rentalCaptor = ArgumentCaptor.forClass(TrainerRental.class);
         verify(trainerRentalRepository).save(rentalCaptor.capture());
@@ -140,7 +164,7 @@ class PublicTrainerControllerTest {
         Payment payment = paymentCaptor.getValue();
         assertEquals(15, payment.getUserId());
         assertEquals(null, payment.getMembershipId());
-        assertEquals(new BigDecimal("199.99"), payment.getAmount());
+        assertEquals(new BigDecimal("199.00"), payment.getAmount());
         assertEquals("SUCCESS", payment.getStatus());
 
         verify(trainerClientRepository).save(any(TrainerClient.class));

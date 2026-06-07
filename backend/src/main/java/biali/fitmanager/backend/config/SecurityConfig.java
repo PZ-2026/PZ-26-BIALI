@@ -24,6 +24,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import biali.fitmanager.backend.security.DatabaseUserDetailsService;
 import biali.fitmanager.backend.security.JwtAuthenticationFilter;
 
+/**
+ * Konfiguracja Spring Security: JWT, CORS, role i hashowanie haseł.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -34,12 +37,23 @@ public class SecurityConfig {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
-    // Hashowanie haseł
+    /**
+     * Bean do hashowania haseł (BCrypt).
+     *
+     * @return {@link PasswordEncoder}
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Provider uwierzytelniania oparty o bazę danych.
+     *
+     * @param userDetailsService serwis ładowania użytkowników
+     * @param passwordEncoder encoder haseł
+     * @return skonfigurowany {@link DaoAuthenticationProvider}
+     */
     @Bean
     public DaoAuthenticationProvider authenticationProvider(DatabaseUserDetailsService userDetailsService,
                                                             PasswordEncoder passwordEncoder) {
@@ -49,6 +63,13 @@ public class SecurityConfig {
         return provider;
     }
 
+    /**
+     * Konfiguruje łańcuch filtrów HTTP i reguły dostępu do endpointów.
+     *
+     * @param http konfigurator HttpSecurity
+     * @param authenticationProvider provider uwierzytelniania
+     * @return {@link SecurityFilterChain}
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    DaoAuthenticationProvider authenticationProvider) throws Exception {
@@ -76,16 +97,32 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Obsługuje nieautoryzowane żądania (401 Unauthorized).
+     *
+     * @return {@link AuthenticationEntryPoint}
+     */
     @Bean
     public AuthenticationEntryPoint unauthorizedEntryPoint() {
         return (request, response, authException) -> response.sendError(HttpStatus.UNAUTHORIZED.value(), "Unauthorized");
     }
 
+    /**
+     * Bean menedżera uwierzytelniania Spring Security.
+     *
+     * @param config konfiguracja uwierzytelniania
+     * @return {@link AuthenticationManager}
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 
+    /**
+     * Konfiguracja CORS dla frontendu.
+     *
+     * @return {@link CorsConfigurationSource} z dozwolonymi metodami i nagłówkami
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
