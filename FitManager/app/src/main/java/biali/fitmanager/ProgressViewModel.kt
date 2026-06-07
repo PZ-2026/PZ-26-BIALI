@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
+import biali.fitmanager.network.ProgressSummaryResponse
 import biali.fitmanager.ClientWorkoutDto
 import biali.fitmanager.network.ClientProgressLogDto
 import biali.fitmanager.network.LogWeightRequest
@@ -17,6 +18,9 @@ import kotlinx.coroutines.launch
 data class ProgressUiState(
     val myWorkouts: List<ClientWorkoutDto> = emptyList(),
     val progressLogs: List<ClientProgressLogDto> = emptyList(),
+    val progressSummary: ProgressSummaryResponse? = null,
+    val isLoadingSummary: Boolean = false,
+    val summaryError: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val sessionExpired: Boolean = false
@@ -43,6 +47,23 @@ class ProgressViewModel : ViewModel() {
             val errorMsg = if (workoutsResult is ApiResult.Error) workoutsResult.message else null
 
             _state.update { it.copy(myWorkouts = workouts, progressLogs = logs, isLoading = false, error = errorMsg) }
+        }
+    }
+
+    fun fetchProgressSummary() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingSummary = true, summaryError = null) }
+            when (val result = repository.getProgressSummary()) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(progressSummary = result.data, isLoadingSummary = false) }
+                }
+                is ApiResult.Error -> {
+                    _state.update { it.copy(summaryError = result.message, isLoadingSummary = false) }
+                }
+                else -> {
+                    _state.update { it.copy(isLoadingSummary = false) }
+                }
+            }
         }
     }
 

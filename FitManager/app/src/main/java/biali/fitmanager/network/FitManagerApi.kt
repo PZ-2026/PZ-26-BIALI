@@ -196,7 +196,7 @@ interface FitManagerApi {
     @DELETE("api/trainers/{trainerId}/choose")
     suspend fun resignTrainer(@Path("trainerId") trainerId: Int): Response<Void>
 
-    @GET("/api/progress/summary")
+    @GET("api/progress/summary")
     suspend fun getProgressSummary(): retrofit2.Response<ProgressSummaryResponse>
 
     @Streaming

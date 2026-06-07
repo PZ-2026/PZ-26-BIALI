@@ -332,11 +332,79 @@ private fun displayNameFromEmail(email: String?): String {
     }
 }
 
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * oraz inne formaty zawierające 8 cyfr (próbuje wyodrębnić dzień/miesiąc/rok).
+ */
+/**
+ * Formatuje datę do postaci DD.MM.YYYY używając wyłącznie manipulacji na stringach.
+ * Obsługuje formaty: DD.MM.YYYY (zwraca bez zmian), YYYY-MM-DD (konwertuje),
+ * YYYY-MM-DD HH:MM:SS, oraz inne formaty zawierające 8 cyfr.
+ */
+private fun formatDisplayDate(dateString: String?): String {
+    if (dateString.isNullOrBlank() || dateString.equals("null", ignoreCase = true)) return ""
+    var s = dateString.trim()
+    
+    // Jeśli już w formacie DD.MM.YYYY – zwróć bez zmian
+    if (Regex("^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(s)) return s
+    
+    // Jeśli zawiera spację – weź tylko część przed spacją (odrzuć czas)
+    if (s.contains(" ")) {
+        s = s.substringBefore(" ")
+    }
+    
+    // Jeśli w formacie YYYY-MM-DD – konwertuj na DD.MM.YYYY
+    val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").find(s)
+    if (isoMatch != null) {
+        val (year, month, day) = isoMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie YYYY/MM/DD – konwertuj na DD.MM.YYYY
+    val slashMatch = Regex("^(\\d{4})/(\\d{2})/(\\d{2})$").find(s)
+    if (slashMatch != null) {
+        val (year, month, day) = slashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Jeśli w formacie DD/MM/YYYY – konwertuj na DD.MM.YYYY
+    val euSlashMatch = Regex("^(\\d{2})/(\\d{2})/(\\d{4})$").find(s)
+    if (euSlashMatch != null) {
+        val (day, month, year) = euSlashMatch.destructured
+        return "$day.$month.$year"
+    }
+    
+    // Fallback: wyciągnij 8 cyfr i spróbuj zinterpretować
+    val digits = s.replace(Regex("[^0-9]"), "")
+    if (digits.length >= 8) {
+        val d1 = digits.substring(0, 2).toIntOrNull() ?: 0
+        val d2 = digits.substring(2, 4).toIntOrNull() ?: 0
+        val d3 = digits.substring(4, 6).toIntOrNull() ?: 0
+        val d4 = digits.substring(6, 8).toIntOrNull() ?: 0
+        // yyyyMMdd
+        if (d1 in 20..99 && d2 in 1..12 && d3 in 1..31) {
+            val year = if (d1 < 100) 2000 + d1 else d1
+            return "${d3.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.${year}"
+        }
+        // ddMMyyyy
+        if (d3 in 20..99 && d2 in 1..12 && d1 in 1..31) {
+            val year = if (d3 < 100) 2000 + d3 else 2000 + d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.20${d3}"
+        }
+        // dd.MM.yyyy z 8 cyframi
+        if (d1 in 1..31 && d2 in 1..12 && (d3 in 20..99 || d3 in 2020..2100)) {
+            val year = if (d3 < 100) 2000 + d3 else d3
+            return "${d1.toString().padStart(2, '0')}.${d2.toString().padStart(2, '0')}.$year"
+        }
+    }
+    
+    // Ostateczny fallback – zwróć oryginał
+    return s
+}
+
 private fun formatIsoDateForDisplay(rawDate: String): String {
-    val input = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val output = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-    val parsed = runCatching { input.parse(rawDate) }.getOrNull() ?: return rawDate
-    return output.format(parsed)
+    return formatDisplayDate(rawDate)
 }
 
 private fun calculateTrainerStartDate(rawEndDate: String): String {
@@ -675,7 +743,7 @@ fun AssignedSessionCard(session: AssignedSessionDto, onExecute: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = session.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = titleColor)
-                    Text(text = "Data wykonania: ${session.date} (${session.duration})", fontSize = 14.sp, color = Color.Gray)
+                    Text(text = "Data wykonania: ${formatDisplayDate(session.date)} (${session.duration})", fontSize = 14.sp, color = Color.Gray)
                 }
                 TextButton(onClick = { pdfLauncher.launch("Plan_${session.title.replace(" ", "_")}.pdf") }) {
                     Text("Pobierz PDF", fontSize = 12.sp, color = Green80)
@@ -812,7 +880,7 @@ private fun generateSessionPdf(context: Context, session: AssignedSessionDto, ur
 
         paint.textSize = 14f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("Data: ${session.date} | Czas trwania: ${session.duration}", 50f, 100f, paint)
+        canvas.drawText("Data: ${formatDisplayDate(session.date)} | Czas trwania: ${session.duration}", 50f, 100f, paint)
         canvas.drawText("Trener układający: ${session.trainerName}", 50f, 125f, paint)
 
         var y = 180f
