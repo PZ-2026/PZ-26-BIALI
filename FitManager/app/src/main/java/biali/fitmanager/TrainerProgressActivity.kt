@@ -768,5 +768,5 @@ fun ProgressBottomNav(onNavigateToHome: () -> Unit, onNavigateToClients: () -> U
 @Composable fun AddSessionDialog(clients: List<UserResponse>, initialClientId: Int?, initialClientName: String?, onDismiss: () -> Unit, onSubmit: (Int, String, String, Int) -> Unit) {}
 @Composable fun AddSessionExerciseDialog(exercises: List<ClientExercise>, onDismiss: () -> Unit, onSubmit: (Int, Int, Int, Double) -> Unit) {}
 @Composable fun TrainerExerciseChartDialog(exerciseName: String, sessionExercises: List<ClientSessionExercise>, trainingSessions: List<ClientTrainingSession>, onDismiss: () -> Unit) {}
-@Composable fun SessionExecutionDialog(session: ClientTrainingSession, workouts: List<ClientWorkout>, onDismiss: () -> Unit) {}
-@Composable fun ClientRealWorkoutsDialog(clientName: String, workouts: List<ClientWorkout>, onDismiss: () -> Unit) {}
+@Composable fun SessionExecutionDialog(session: ClientTrainingSession, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {}
+@Composable fun ClientRealWorkoutsDialog(clientName: String, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {}

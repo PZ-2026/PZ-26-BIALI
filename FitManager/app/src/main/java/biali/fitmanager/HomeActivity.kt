@@ -39,6 +39,7 @@ import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.MembershipResponse
 import biali.fitmanager.network.MembershipTypeResponse
+import biali.fitmanager.network.MeResponse
 import biali.fitmanager.network.AssignedSessionDto
 import biali.fitmanager.network.CompleteSessionRequest
 import biali.fitmanager.network.SetLogDto
@@ -83,12 +84,7 @@ class HomeActivity : ComponentActivity() {
 
         userRole = SessionManager.getRole() ?: token?.let(SessionManager::resolveRoleFromToken)
         displayName = loggedDisplayName ?: displayNameFromEmail(loggedEmail)
-        fetchProfileDisplayNameIfNeeded()
-        fetchMembership()
-        fetchBalance()
-        fetchMembershipTypes()
-        fetchTrainerStatus()
-        fetchAssignedSessions()
+        loadInitialHomeData()
 
         setContent {
             GymManagerTheme {
@@ -131,41 +127,98 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // refresh critical user data when returning to Home
-        fetchBalance()
-        fetchMembership()
-        fetchTrainerStatus()
-        fetchAssignedSessions()
+        refreshHomeData(refreshSecondary = false)
     }
 
-    private fun fetchBalance() {
+    private fun loadInitialHomeData() {
+        refreshHomeData(refreshSecondary = true)
+    }
+
+    private fun refreshHomeData(refreshSecondary: Boolean) {
         lifecycleScope.launch {
-            when (val result = repository.getMe()) {
-                is ApiResult.Success -> {
-                    balance = result.data.balance ?: SessionManager.getBalance()
+            isMembershipLoading = true
+            isTrainerLoading = true
+
+            when (val meResult = repository.getMe()) {
+                is ApiResult.Success -> applyUserProfile(meResult.data)
+                is ApiResult.Unauthorized -> {
+                    logout()
+                    return@launch
                 }
-                is ApiResult.Unauthorized -> logout()
+                is ApiResult.Error -> balance = SessionManager.getBalance()
+            }
+
+            when (val membershipResult = repository.getMyMembership()) {
+                is ApiResult.Success -> membership = membershipResult.data
+                is ApiResult.Unauthorized -> {
+                    logout()
+                    return@launch
+                }
                 is ApiResult.Error -> {
-                    // keep local stored balance if available
-                    balance = SessionManager.getBalance()
+                    if (membershipResult.code == 404) {
+                        membership = null
+                    }
                 }
             }
+
+            if (refreshSecondary) {
+                when (val typesResult = repository.getMembershipTypes()) {
+                    is ApiResult.Success -> membershipTypes = typesResult.data
+                    else -> Unit
+                }
+                when (val sessionsResult = repository.getMyAssignedSessions()) {
+                    is ApiResult.Success -> assignedSessions = sessionsResult.data
+                    else -> Unit
+                }
+            }
+
+            isMembershipLoading = false
+            isTrainerLoading = false
         }
     }
 
-    private fun fetchAssignedSessions() {
-        lifecycleScope.launch {
-            when (val result = repository.getMyAssignedSessions()) {
-                is ApiResult.Success -> assignedSessions = result.data
-                else -> Unit
+    private suspend fun applyUserProfile(me: MeResponse) {
+        balance = me.balance ?: SessionManager.getBalance()
+
+        if (displayName == "Użytkowniku") {
+            val fromParts = listOf(me.firstName, me.lastName)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+
+            displayName = when {
+                fromParts.isNotBlank() -> fromParts
+                !me.name.isNullOrBlank() -> me.name
+                else -> displayName
             }
+        }
+
+        val activeTrainerId = me.trainerId
+        val rawEndDate = me.trainerEndDate
+        currentTrainerId = activeTrainerId
+
+        if (activeTrainerId == null) {
+            trainerName = null
+            trainerStartDate = null
+            trainerEndDate = null
+            return
+        }
+
+        trainerEndDate = rawEndDate?.let(::formatIsoDateForDisplay)
+        trainerStartDate = rawEndDate?.let(::calculateTrainerStartDate)
+
+        when (val trainerResult = repository.getTrainerById(activeTrainerId)) {
+            is ApiResult.Success -> {
+                trainerName = "${trainerResult.data.firstName} ${trainerResult.data.lastName}".trim()
+            }
+            is ApiResult.Unauthorized -> logout()
+            is ApiResult.Error -> trainerName = "Twój trener"
         }
     }
 
     private fun completeSession(sessionId: Int, request: CompleteSessionRequest) {
         lifecycleScope.launch {
             when (val result = repository.completeSession(sessionId, request)) {
-                is ApiResult.Success -> fetchAssignedSessions() // odśwież widok treningów
+                is ApiResult.Success -> refreshHomeData(refreshSecondary = true)
                 else -> Unit
             }
         }
@@ -174,104 +227,6 @@ class HomeActivity : ComponentActivity() {
     private fun navigateToWallet() {
         val intent = Intent(this, WalletActivity::class.java)
         startActivity(intent)
-    }
-
-    private fun fetchProfileDisplayNameIfNeeded() {
-        if (displayName != "Użytkowniku") return
-
-        lifecycleScope.launch {
-            when (val result = repository.getMe()) {
-                is ApiResult.Success -> {
-                    val fromParts = listOf(result.data.firstName, result.data.lastName)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" ")
-
-                    displayName = when {
-                        fromParts.isNotBlank() -> fromParts
-                        !result.data.name.isNullOrBlank() -> result.data.name
-                        else -> displayName
-                    }
-                }
-                is ApiResult.Unauthorized -> logout()
-                is ApiResult.Error -> Unit
-            }
-        }
-    }
-
-    private fun fetchMembership() {
-        lifecycleScope.launch {
-            isMembershipLoading = true
-            when (val result = repository.getMyMembership()) {
-                is ApiResult.Success -> {
-                    membership = result.data
-                }
-                is ApiResult.Unauthorized -> logout()
-                is ApiResult.Error -> {
-                    if (result.code == 404) {
-                        membership = null
-                    }
-                }
-            }
-            isMembershipLoading = false
-        }
-    }
-
-    private fun fetchMembershipTypes() {
-        lifecycleScope.launch {
-            when (val result = repository.getMembershipTypes()) {
-                is ApiResult.Success -> {
-                    membershipTypes = result.data
-                }
-                else -> Unit
-            }
-        }
-    }
-
-    private fun fetchTrainerStatus() {
-        lifecycleScope.launch {
-            isTrainerLoading = true
-            when (val meResult = repository.getMe()) {
-                is ApiResult.Success -> {
-                    val activeTrainerId = meResult.data.trainerId
-                    val rawEndDate = meResult.data.trainerEndDate
-                    currentTrainerId = activeTrainerId
-
-                    if (activeTrainerId == null) {
-                        currentTrainerId = null
-                        trainerName = null
-                        trainerStartDate = null
-                        trainerEndDate = null
-                    } else {
-                        trainerEndDate = rawEndDate?.let(::formatIsoDateForDisplay)
-                        trainerStartDate = rawEndDate?.let(::calculateTrainerStartDate)
-
-                        when (val trainerResult = repository.getTrainerById(activeTrainerId)) {
-                            is ApiResult.Success -> {
-                                trainerName = "${trainerResult.data.firstName} ${trainerResult.data.lastName}".trim()
-                            }
-                            is ApiResult.Unauthorized -> {
-                                logout()
-                                return@launch
-                            }
-                            is ApiResult.Error -> {
-                                trainerName = "Twój trener"
-                            }
-                        }
-                    }
-                }
-                is ApiResult.Unauthorized -> {
-                    logout()
-                    return@launch
-                }
-                is ApiResult.Error -> {
-                    currentTrainerId = null
-                    trainerName = null
-                    trainerStartDate = null
-                    trainerEndDate = null
-                }
-            }
-            isTrainerLoading = false
-        }
     }
 
     private fun logout() {
