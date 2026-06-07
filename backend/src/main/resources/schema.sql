@@ -42,8 +42,7 @@ CREATE TABLE trainer_rentals (
 
 -- only one active trainer rental per client
 CREATE UNIQUE INDEX unique_active_trainer_rental_per_client
-ON trainer_rentals(client_id)
-WHERE status = 'ACTIVE';
+ON trainer_rentals(client_id);
 
 -----------------------------------------------------------
 -- 3. MEMBERSHIP TYPES (NOWA TABELA)
@@ -72,8 +71,7 @@ CREATE TABLE memberships (
 
 -- 🔥 tylko 1 aktywny karnet na usera
 CREATE UNIQUE INDEX unique_active_membership_per_user
-ON memberships(user_id)
-WHERE status = 'ACTIVE';
+ON memberships(user_id);
 
 -----------------------------------------------------------
 -- 5. PAYMENTS

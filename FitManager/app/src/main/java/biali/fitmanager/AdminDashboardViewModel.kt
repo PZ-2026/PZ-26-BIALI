@@ -44,7 +44,9 @@ data class AdminDashboardUiState(
     val clientIdForAssignment: String = "",
     val form: AdminUserFormState = AdminUserFormState(),
     val membershipTypes: List<biali.fitmanager.network.MembershipTypeResponse> = emptyList(),
-    val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState()
+    val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState(),
+    val chartData: biali.fitmanager.network.ChartDataResponse? = null,
+    val isChartLoading: Boolean = false
 )
 
 class AdminDashboardViewModel : ViewModel() {
@@ -62,7 +64,24 @@ class AdminDashboardViewModel : ViewModel() {
             loadUsersInternal(_state.value.selectedUserRoleFilter)
             loadTrainersInternal()
             loadMembershipTypesInternal()
+            loadChartDataInternal()
             _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    private fun loadChartDataInternal() {
+        viewModelScope.launch {
+            _state.update { it.copy(isChartLoading = true) }
+            when (val result = repository.getChartData()) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(chartData = result.data, isChartLoading = false) }
+                }
+                is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true, isChartLoading = false) }
+                is ApiResult.Error -> {
+                    // Silently fail for charts, don't show error
+                    _state.update { it.copy(chartData = null, isChartLoading = false) }
+                }
+            }
         }
     }
 

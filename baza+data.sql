@@ -1,4 +1,4 @@
--- 1. Tabela Użytkowników (wspólna dla ról: ADMIN, TRAINER, CLIENT)
+odp-- 1. Tabela Użytkowników (wspólna dla ról: ADMIN, TRAINER, CLIENT)
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,

@@ -207,6 +207,9 @@ class FitManagerRepository(
         return executeVoidCall { api.completeSession(sessionId, request) }
     }
 
+    suspend fun getChartData(): ApiResult<ChartDataResponse> =
+        executeBodyCall { api.getChartData() }
+
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {
             val response = call()

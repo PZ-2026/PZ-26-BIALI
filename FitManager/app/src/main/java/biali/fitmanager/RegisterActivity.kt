@@ -93,11 +93,12 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        val intent = Intent(this, targetActivity)
+        val intent = Intent(this, targetActivity).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
         email?.let { intent.putExtra("USER_EMAIL", it) }
         intent.putExtra("USER_ROLE", role)
         startActivity(intent)
-        finish()
     }
 
     @Suppress("UNCHECKED_CAST")
