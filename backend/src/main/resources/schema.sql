@@ -1,5 +1,5 @@
 -- opcjonalnie czyszczenie
-DROP TABLE IF EXISTS training_plans, progress_logs, reservations, training_sessions,
+DROP TABLE IF EXISTS client_workouts, session_exercises, exercises, training_plans, progress_logs, reservations, training_sessions,
 payments, memberships, membership_types, trainer_clients, trainer_rentals, users CASCADE;
 
 -----------------------------------------------------------
@@ -105,7 +105,7 @@ CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED', 'COMPLETED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, session_id)
 );
@@ -116,7 +116,6 @@ CREATE TABLE reservations (
 CREATE TABLE progress_logs (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     log_date DATE NOT NULL,
     weight DECIMAL(5,2),
     notes TEXT,
@@ -133,4 +132,33 @@ CREATE TABLE training_plans (
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-----------------------------------------------------------
+-- 10. EXERCISES (DICTIONARY)
+-----------------------------------------------------------
+CREATE TABLE exercises (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    body_part VARCHAR(50)
+);
+
+CREATE TABLE session_exercises (
+    id SERIAL PRIMARY KEY,
+    session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    sets INT NOT NULL,
+    reps INT NOT NULL,
+    weight DECIMAL(5,2)
+);
+
+CREATE TABLE client_workouts (
+    id SERIAL PRIMARY KEY,
+    client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    session_id INT REFERENCES training_sessions(id) ON DELETE CASCADE,
+    weight DECIMAL(5,2) NOT NULL,
+    sets INT NOT NULL DEFAULT 1,
+    reps INT NOT NULL,
+    workout_date DATE DEFAULT CURRENT_DATE
 );

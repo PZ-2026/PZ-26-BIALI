@@ -11,21 +11,35 @@ INSERT INTO membership_types (code, name, price, duration_days, description) VAL
 -- 2. USERS
 -----------------------------------------------------------
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number, account_balance) VALUES
-('admin@fitmanager.pl', '$2b$10$ekqZnOc3O2F672gf64L7LeXFZcvkdUw0JPSNPacegGAjzamREVIru', 'ADMIN', 'Olaf', 'Słowik', '123456789', 0.00),
-('trener@fitmanager.pl', '$2b$10$5YKBYUW/24lWJU5lLeUjTuCE0mFNxHmArE9i6h4LgS028.BJ8doi2', 'TRAINER', 'Jan', 'Kowalski', '987654321', 0.00),
-('trener2@fitmanager.pl', '$2b$10$5YKBYUW/24lWJU5lLeUjTuCE0mFNxHmArE9i6h4LgS028.BJ8doi2', 'TRAINER', 'Marek', 'Zieliński', '600111222', 0.00),
-('trener3@fitmanager.pl', '$2b$10$5YKBYUW/24lWJU5lLeUjTuCE0mFNxHmArE9i6h4LgS028.BJ8doi2', 'TRAINER', 'Agnieszka', 'Lewandowska', '600333444', 0.00),
-('trener4@fitmanager.pl', '$2b$10$5YKBYUW/24lWJU5lLeUjTuCE0mFNxHmArE9i6h4LgS028.BJ8doi2', 'TRAINER', 'Piotr', 'Nowicki', '600555666', 0.00),
-('klient@fitmanager.pl', '$2b$10$2Vu16Vf7sDXwbKkcXf57T.7jpcVZpTXf8gS.9OC3EONcQx.IEGoKu', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00);
-
+('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Słowik', '123456789', 0.00),
+('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321', 0.00),
+('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333', 200.00),
+('klient2@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Jan', 'Kowalski', '123456789', 0.00),
+('trener2@fitmanager.pl', 'hashed_pwd_trainer2', 'TRAINER', 'Marek', 'Zieliński', '600111222', 0.00),
+('trener3@fitmanager.pl', 'hashed_pwd_trainer3', 'TRAINER', 'Agnieszka', 'Lewandowska', '600333444', 0.00),
+('trener4@fitmanager.pl', 'hashed_pwd_trainer4', 'TRAINER', 'Piotr', 'Nowicki', '600555666', 0.00);
 
 -----------------------------------------------------------
 -- 3. RELATION
 -----------------------------------------------------------
-INSERT INTO trainer_clients (trainer_id, client_id) VALUES (2, 3);
+INSERT INTO trainer_clients (trainer_id, client_id) VALUES (2, 3), (2, 4);
 
 -----------------------------------------------------------
--- 4. MEMBERSHIP (AKTYWNY KARNET)
+-- 4. TRAINER RENTALS (AKTYWNI PODOPIECZNI)
+-----------------------------------------------------------
+INSERT INTO trainer_rentals (trainer_id, client_id, start_date, end_date, status) VALUES
+(2, 3, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE'),
+(2, 4, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE');
+
+-----------------------------------------------------------
+-- 5. PAYMENTS
+-----------------------------------------------------------
+INSERT INTO payments (user_id, membership_id, amount, status) VALUES
+(3, NULL, 199.00, 'SUCCESS'),
+(4, NULL, 199.00, 'SUCCESS');
+
+-----------------------------------------------------------
+-- 6. MEMBERSHIP (AKTYWNY KARNET)
 -----------------------------------------------------------
 INSERT INTO memberships (user_id, membership_type_id, start_date, end_date, status)
 VALUES (
@@ -37,18 +51,7 @@ VALUES (
 );
 
 -----------------------------------------------------------
--- 5. PAYMENT
------------------------------------------------------------
-INSERT INTO payments (user_id, membership_id, amount, status)
-VALUES (
-    3,
-    (SELECT id FROM memberships WHERE user_id = 3 AND status = 'ACTIVE'),
-    149.99,
-    'SUCCESS'
-);
-
------------------------------------------------------------
--- 6. TRAINING SESSION
+-- 7. TRAINING SESSION
 -----------------------------------------------------------
 INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_participants)
 VALUES (
@@ -60,19 +63,49 @@ VALUES (
 );
 
 -----------------------------------------------------------
--- 7. RESERVATION
+-- 8. RESERVATION
 -----------------------------------------------------------
 INSERT INTO reservations (user_id, session_id, status)
 VALUES (3, 1, 'CONFIRMED');
 
 -----------------------------------------------------------
--- 8. PROGRESS
+-- 9. PROGRESS
 -----------------------------------------------------------
-INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes)
-VALUES (3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych.');
+INSERT INTO progress_logs (client_id, log_date, weight, notes)
+VALUES (3, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych.');
 
 -----------------------------------------------------------
--- 9. TRAINING PLAN
+-- 10. TRAINING PLAN
 -----------------------------------------------------------
 INSERT INTO training_plans (trainer_id, client_id, title, description)
 VALUES (2, 3, 'Plan FBW', '1. Przysiady 3x10, 2. Martwy ciąg 3x8');
+
+-----------------------------------------------------------
+-- 11. EXERCISES (SŁOWNIK ĆWICZEŃ)
+-----------------------------------------------------------
+INSERT INTO exercises (name, body_part) VALUES
+('Przysiad ze sztangą', 'Nogi'),
+('Wykroki z hantlami', 'Nogi'),
+('Wyciskanie nogami na suwnicy', 'Nogi'),
+('Martwy ciąg', 'Plecy'),
+('Wiosłowanie sztangą w opadzie', 'Plecy'),
+('Podciąganie na drążku', 'Plecy'),
+('Wyciskanie sztangi na ławce płaskiej', 'Klatka piersiowa'),
+('Wyciskanie hantli na ławce skośnej', 'Klatka piersiowa'),
+('Rozpiętki z hantlami', 'Klatka piersiowa'),
+('Wyciskanie żołnierskie', 'Barki'),
+('Wznosy ramion bokiem z hantlami', 'Barki'),
+('Uginanie ramion ze sztangą', 'Biceps'),
+('Uginanie ramion z hantlami', 'Biceps'),
+('Wyciskanie francuskie sztangi', 'Triceps'),
+('Prostowanie ramion na wyciągu', 'Triceps'),
+('Deska (Plank)', 'Brzuch'),
+('Spięcia brzucha (Crunches)', 'Brzuch');
+
+-----------------------------------------------------------
+-- 12. SESSION EXERCISES (PRZYKŁADOWE ĆWICZENIA W SESJI)
+-----------------------------------------------------------
+INSERT INTO session_exercises (session_id, exercise_id, sets, reps, weight) VALUES
+(1, 1, 4, 10, 80.00),  -- Przysiad ze sztangą
+(1, 2, 3, 12, 15.00),  -- Wykroki z hantlami
+(1, 16, 3, 60, 0.00);  -- Deska (Plank)

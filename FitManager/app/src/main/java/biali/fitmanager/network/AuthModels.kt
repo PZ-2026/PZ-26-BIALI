@@ -89,3 +89,8 @@ data class TopUpRequest(
     val amount: Double
 )
 
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+

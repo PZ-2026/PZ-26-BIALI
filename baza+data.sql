@@ -55,7 +55,7 @@ CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('CONFIRMED', 'CANCELLED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED', 'COMPLETED')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, session_id)
 );
@@ -64,7 +64,6 @@ CREATE TABLE reservations (
 CREATE TABLE progress_logs (
     id SERIAL PRIMARY KEY,
     client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    trainer_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     log_date DATE NOT NULL,
     weight DECIMAL(5, 2),
     notes TEXT,
@@ -81,13 +80,39 @@ CREATE TABLE training_plans (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 9. Tabela Ćwiczeń (Słownik)
+CREATE TABLE exercises (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    body_part VARCHAR(50)
+);
 
+-- 10. Tabela Ćwiczeń w Sesji Treningowej
+CREATE TABLE session_exercises (
+    id SERIAL PRIMARY KEY,
+    session_id INT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    sets INT NOT NULL,
+    reps INT NOT NULL,
+    weight DECIMAL(5, 2)
+);
+
+-- 11. Tabela Wyników Klientów (Treningi)
+CREATE TABLE client_workouts (
+    id SERIAL PRIMARY KEY,
+    client_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exercise_id INT NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    weight DECIMAL(5,2) NOT NULL,
+    reps INT NOT NULL,
+    workout_date DATE DEFAULT CURRENT_DATE
+);
 
 -- Dodawanie przykładowych użytkowników 
 INSERT INTO users (email, password_hash, role, first_name, last_name, phone_number) VALUES
-('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Slowik', '123456789'),
+('admin@fitmanager.pl', 'hashed_pwd_admin', 'ADMIN', 'Olaf', 'Słowik', '123456789'),
 ('trener@fitmanager.pl', 'hashed_pwd_trainer', 'TRAINER', 'Jan', 'Kowalski', '987654321'),
-('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333');
+('klient@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Anna', 'Nowak', '555444333'),
+('klient2@fitmanager.pl', 'hashed_pwd_client', 'CLIENT', 'Jan', 'Kowalski', '123456789');
 
 -- Przypisanie klienta (ID 3) do trenera (ID 2)
 INSERT INTO trainer_clients (trainer_id, client_id) VALUES
@@ -110,9 +135,35 @@ INSERT INTO reservations (user_id, session_id, status) VALUES
 (3, 1, 'CONFIRMED');
 
 -- Wpis postępów treningowych przez trenera 
-INSERT INTO progress_logs (client_id, trainer_id, log_date, weight, notes) VALUES
-(3, 2, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych, technika przysiadu znacznie lepsza.');
+INSERT INTO progress_logs (client_id, log_date, weight, notes) VALUES
+(3, CURRENT_DATE, 62.5, 'Poprawa mobilności w stawach skokowych, technika przysiadu znacznie lepsza.');
 
 -- Stworzenie planu treningowego dla klienta
 INSERT INTO training_plans (trainer_id, client_id, title, description) VALUES
 (2, 3, 'Plan FBW dla początkujących', '1. Przysiady 3x10\n2. Martwy ciąg 3x8\n3. Wyciskanie na ławce płaskiej 3x10');
+
+-- Dodanie słownika ćwiczeń
+INSERT INTO exercises (name, body_part) VALUES
+('Przysiad ze sztangą', 'Nogi'),
+('Wykroki z hantlami', 'Nogi'),
+('Wyciskanie nogami na suwnicy', 'Nogi'),
+('Martwy ciąg', 'Plecy'),
+('Wiosłowanie sztangą w opadzie', 'Plecy'),
+('Podciąganie na drążku', 'Plecy'),
+('Wyciskanie sztangi na ławce płaskiej', 'Klatka piersiowa'),
+('Wyciskanie hantli na ławce skośnej', 'Klatka piersiowa'),
+('Rozpiętki z hantlami', 'Klatka piersiowa'),
+('Wyciskanie żołnierskie', 'Barki'),
+('Wznosy ramion bokiem z hantlami', 'Barki'),
+('Uginanie ramion ze sztangą', 'Biceps'),
+('Uginanie ramion z hantlami', 'Biceps'),
+('Wyciskanie francuskie sztangi', 'Triceps'),
+('Prostowanie ramion na wyciągu', 'Triceps'),
+('Deska (Plank)', 'Brzuch'),
+('Spięcia brzucha (Crunches)', 'Brzuch');
+
+-- Dodanie przykładowych ćwiczeń do zaplanowanego treningu (sesji)
+INSERT INTO session_exercises (session_id, exercise_id, sets, reps, weight) VALUES
+(1, 1, 4, 10, 80.00),
+(1, 2, 3, 12, 15.00),
+(1, 16, 3, 60, 0.00);

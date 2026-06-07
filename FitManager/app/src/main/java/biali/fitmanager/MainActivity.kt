@@ -125,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         val className: String? = if (role.equals("ADMIN", ignoreCase = true)) {
             "biali.fitmanager.AdminHomeActivity"
         } else if (role.equals("TRAINER", ignoreCase = true)) {
-            "biali.fitmanager.TrainerUsersActivity"
+            "biali.fitmanager.TrainerHomeActivity"
         } else if (role.equals("CLIENT", ignoreCase = true)) {
             "biali.fitmanager.HomeActivity"
         } else {

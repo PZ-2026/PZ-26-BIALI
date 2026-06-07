@@ -39,5 +39,11 @@
         <activity android:name=".TrainersActivity" />
         <activity android:name=".AdminHomeActivity" />
         <activity android:name=".ProgressActivity" android:exported="false" />
+        <activity
+    android:name=".TrainerProgressActivity"
+    android:exported="false"
+    android:theme="@style/Theme.FitManager" />
+        <activity android:name=".AccountActivity" android:exported="false" />
+        <activity android:name=".TrainerHomeActivity" android:exported="false" />
     </application>
 </manifest>

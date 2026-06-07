@@ -4,6 +4,13 @@ import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response
+import biali.fitmanager.ClientProgressLog
+import biali.fitmanager.ClientTrainingSession
+import biali.fitmanager.ClientExercise
+import biali.fitmanager.ClientSessionExercise
+import biali.fitmanager.AddSessionExerciseRequest
+import biali.fitmanager.ClientWorkoutDto
+import biali.fitmanager.LogWorkoutRequest
 import java.io.IOException
 
 class FitManagerRepository(
@@ -20,6 +27,9 @@ class FitManagerRepository(
     suspend fun getMe(): ApiResult<MeResponse> =
         executeBodyCall { api.getMe() }
 
+    suspend fun changeMyPassword(request: ChangePasswordRequest): ApiResult<Unit> =
+        executeVoidCall { api.changeMyPassword(request) }
+
     suspend fun getUsers(role: String? = null): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getUsers(role) }
 
@@ -29,11 +39,17 @@ class FitManagerRepository(
     suspend fun updateUser(id: Int, request: UserUpsertRequest): ApiResult<UserResponse> =
         executeBodyCall { api.updateUser(id, request) }
 
+    suspend fun updateOwnProfile(id: Int, request: UserUpsertRequest): ApiResult<UserResponse> =
+        executeBodyCall { api.updateOwnProfile(id, request) }
+
     suspend fun deleteUser(id: Int): ApiResult<Unit> =
         executeVoidCall { api.deleteUser(id) }
 
     suspend fun getTrainers(): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getTrainers() }
+
+    suspend fun getGymMembershipRevenue(): ApiResult<Double> =
+        executeBodyCall { api.getGymMembershipRevenue() }
 
     suspend fun getAllTrainers(): ApiResult<List<UserResponse>> =
         executeBodyCall { api.getAllTrainers() }
@@ -64,6 +80,9 @@ class FitManagerRepository(
 
     suspend fun getMyMembership(): ApiResult<MembershipResponse> =
         executeBodyCall { api.getMyMembership() }
+
+    suspend fun getMemberships(userId: Int? = null): ApiResult<List<MembershipResponse>> =
+        executeBodyCall { api.getMemberships(userId) }
 
     suspend fun getMembershipTypes(): ApiResult<List<MembershipTypeResponse>> =
         executeBodyCall { api.getMembershipTypes() }
@@ -103,6 +122,90 @@ class FitManagerRepository(
             val response = api.downloadUsersReportPdf()
             executeBodyResponse(response)
         }
+    
+    suspend fun getTrainerProgressLogs(): ApiResult<List<ClientProgressLog>> {
+        return executeBodyCall { api.getTrainerProgressLogs() }
+    }
+
+    suspend fun getTrainerSessions(): ApiResult<List<ClientTrainingSession>> {
+        return executeBodyCall { api.getTrainerSessions() }
+    }
+
+    suspend fun updateProgressNote(id: Int, request: UpdateProgressNoteRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateProgressNote(id, request) }
+    }
+
+    suspend fun addTrainerSession(request: biali.fitmanager.CreateSessionRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addTrainerSession(request) }
+    }
+
+    suspend fun sendSessionToClient(sessionId: Int): ApiResult<Unit> {
+        return executeVoidCall { api.sendSessionToClient(sessionId) }
+    }
+
+    suspend fun deleteTrainerSession(sessionId: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteTrainerSession(sessionId) }
+    }
+
+    suspend fun getTrainerExercises(): ApiResult<List<ClientExercise>> {
+        return executeBodyCall { api.getTrainerExercises() }
+    }
+
+    suspend fun getAllSessionExercises(): ApiResult<List<ClientSessionExercise>> {
+        return executeBodyCall { api.getAllSessionExercises() }
+    }
+
+    suspend fun addSessionExercise(sessionId: Int, request: AddSessionExerciseRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addSessionExercise(sessionId, request) }
+    }
+
+    suspend fun deleteSessionExercise(id: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteSessionExercise(id) }
+    }
+
+    suspend fun getTrainerClientWorkouts(): ApiResult<List<ClientWorkoutDto>> {
+        return executeBodyCall { api.getTrainerClientWorkouts() }
+    }
+
+    suspend fun getMyTrainerRevenue(): ApiResult<Double> {
+        return executeBodyCall { api.getMyTrainerRevenue() }
+    }
+
+    suspend fun getClientExercises(): ApiResult<List<ClientExercise>> {
+        return executeBodyCall { api.getClientExercises() }
+    }
+
+    suspend fun getClientProgressLogs(): ApiResult<List<ClientProgressLogDto>> {
+        return executeBodyCall { api.getClientProgressLogs() }
+    }
+
+    suspend fun addClientProgressLog(request: LogWeightRequest): ApiResult<Unit> {
+        return executeVoidCall { api.addClientProgressLog(request) }
+    }
+
+    suspend fun getMyWorkouts(): ApiResult<List<ClientWorkoutDto>> {
+        return executeBodyCall { api.getMyWorkouts() }
+    }
+
+    suspend fun logClientWorkout(request: LogWorkoutRequest): ApiResult<Unit> {
+        return executeVoidCall { api.logClientWorkout(request) }
+    }
+
+    suspend fun deleteClientWorkout(id: Int): ApiResult<Unit> {
+        return executeVoidCall { api.deleteClientWorkout(id) }
+    }
+
+    suspend fun updateClientWorkout(id: Int, request: LogWorkoutRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateClientWorkout(id, request) }
+    }
+
+    suspend fun getMyAssignedSessions(): ApiResult<List<AssignedSessionDto>> {
+        return executeBodyCall { api.getMyAssignedSessions() }
+    }
+
+    suspend fun completeSession(sessionId: Int, request: CompleteSessionRequest): ApiResult<Unit> {
+        return executeVoidCall { api.completeSession(sessionId, request) }
+    }
 
     suspend fun getChartData(): ApiResult<ChartDataResponse> =
         executeBodyCall { api.getChartData() }
