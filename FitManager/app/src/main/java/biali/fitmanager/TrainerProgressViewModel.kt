@@ -84,6 +84,72 @@ class TrainerProgressViewModel : ViewModel() {
         }
     }
 
+    fun addSessionWithExercises(clientId: Int, title: String, startTime: String, durationMinutes: Int, drafts: List<DraftExercise>, sendImmediately: Boolean) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val request = CreateSessionRequest(clientId, title, startTime, durationMinutes)
+            
+            when (val result = repository.addTrainerSession(request)) {
+                is ApiResult.Success -> {
+                    // Niezawodne wyciąganie ID utworzonej sesji, ignorując problemy z parsowaniem Retrofit/Gson
+                    val sessionId = try {
+                        var extractedId = -1
+                        val data = result.data
+                        if (data != null) {
+                            if (data is Number) {
+                                extractedId = data.toInt()
+                            } else if (data is Map<*, *>) {
+                                extractedId = (data["id"] as? Number)?.toInt() ?: (data["id"] as? String)?.toIntOrNull() ?: -1
+                            } else {
+                                try {
+                                    val idField = data.javaClass.getDeclaredField("id")
+                                    idField.isAccessible = true
+                                    extractedId = (idField.get(data) as? Number)?.toInt() ?: -1
+                                } catch (e: Exception) {
+                                    try {
+                                        val idMethod = data.javaClass.getMethod("getId")
+                                        extractedId = (idMethod.invoke(data) as? Number)?.toInt() ?: -1
+                                    } catch (e2: Exception) {
+                                        val match = Regex("id[\"\\s:=]*(\\d+)", RegexOption.IGNORE_CASE).find(data.toString())
+                                        extractedId = match?.groupValues?.get(1)?.toInt() ?: -1
+                                    }
+                                }
+                            }
+                        }
+                        extractedId
+                    } catch (e: Exception) {
+                        val match = Regex("id[\"\\s:=]*(\\d+)", RegexOption.IGNORE_CASE).find(result.data.toString())
+                        match?.groupValues?.get(1)?.toInt() ?: -1
+                    }
+
+                    if (sessionId != -1) {
+                        for (draft in drafts) {
+                            val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                            repository.addSessionExercise(sessionId, exRequest)
+                        }
+                        if (sendImmediately) {
+                            repository.sendSessionToClient(sessionId)
+                        }
+                    }
+                    fetchData() // Odśwież widok
+                }
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun addMultipleSessionExercises(sessionId: Int, drafts: List<DraftExercise>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            for (draft in drafts) {
+                val request = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                repository.addSessionExercise(sessionId, request)
+            }
+            fetchData() // Odświeża UI dopiero po dodaniu wszystkich ćwiczeń w tle
+        }
+    }
+
     fun sendSessionToClient(sessionId: Int) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }

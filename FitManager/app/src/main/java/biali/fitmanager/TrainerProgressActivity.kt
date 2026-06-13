@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +45,10 @@ import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.network.UserResponse
 import biali.fitmanager.ui.theme.GymManagerTheme
 import biali.fitmanager.ui.theme.LightGreen80
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import androidx.compose.ui.platform.LocalContext
+import java.util.Calendar
 
 const val EXTRA_PLAN_CLIENT_ID = "PLAN_CLIENT_ID"
 const val EXTRA_PLAN_CLIENT_NAME = "PLAN_CLIENT_NAME"
@@ -60,6 +66,7 @@ data class ClientExercise(val id: Int, val name: String, val bodyPart: String)
 data class ClientSessionExercise(val id: Int, val sessionId: Int, val exerciseName: String, val sets: Int, val reps: Int, val weight: Double)
 data class AddSessionExerciseRequest(val exerciseId: Int, val sets: Int, val reps: Int, val weight: Double)
 data class ClientWorkout(val id: Int, val sessionId: Int, val clientName: String, val details: String) // Dodany pomocniczy model
+data class DraftExercise(val exerciseId: Int, val name: String, val sets: Int, val reps: Int, val weight: Double)
 
 data class ClientTrainingSession(
     val id: Int,
@@ -457,11 +464,12 @@ fun ProgressContent(
         if (showSessionDialog) {
             AddSessionDialog(
                 clients = state.clients,
+                exercises = state.availableExercises,
                 initialClientId = initialPlanClientId,
                 initialClientName = initialPlanClientName,
                 onDismiss = { showSessionDialog = false },
-                onSubmit = { clientId, title, startTime, duration ->
-                    viewModel.addSession(clientId, title, startTime, duration)
+                onSubmit = { clientId, title, startTime, duration, drafts, sendImmediately ->
+                    viewModel.addSessionWithExercises(clientId, title, startTime, duration, drafts, sendImmediately)
                     showSessionDialog = false
                 }
             )
@@ -471,8 +479,8 @@ fun ProgressContent(
             AddSessionExerciseDialog(
                 exercises = state.availableExercises,
                 onDismiss = { selectedSessionForExercise = null },
-                onSubmit = { exerciseId, sets, reps, weight ->
-                    viewModel.addSessionExercise(selectedSessionForExercise!!.id, exerciseId, sets, reps, weight)
+                onSubmitMultiple = { drafts ->
+                    viewModel.addMultipleSessionExercises(selectedSessionForExercise!!.id, drafts)
                     selectedSessionForExercise = null
                 }
             )
@@ -490,7 +498,7 @@ fun ProgressContent(
         if (selectedSessionForExecution != null) {
             SessionExecutionDialog(
                 session = selectedSessionForExecution!!,
-                workouts = state.clientWorkouts.filter { it.sessionId == selectedSessionForExecution!!.id },
+                workouts = state.clientWorkouts,
                 onDismiss = { selectedSessionForExecution = null }
             )
         }
@@ -764,9 +772,519 @@ fun ProgressBottomNav(onNavigateToHome: () -> Unit, onNavigateToClients: () -> U
     }
 }
 
-@Composable fun EditNoteDialog(initialNote: String, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {}
-@Composable fun AddSessionDialog(clients: List<UserResponse>, initialClientId: Int?, initialClientName: String?, onDismiss: () -> Unit, onSubmit: (Int, String, String, Int) -> Unit) {}
-@Composable fun AddSessionExerciseDialog(exercises: List<ClientExercise>, onDismiss: () -> Unit, onSubmit: (Int, Int, Int, Double) -> Unit) {}
-@Composable fun TrainerExerciseChartDialog(exerciseName: String, sessionExercises: List<ClientSessionExercise>, trainingSessions: List<ClientTrainingSession>, onDismiss: () -> Unit) {}
-@Composable fun SessionExecutionDialog(session: ClientTrainingSession, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {}
-@Composable fun ClientRealWorkoutsDialog(clientName: String, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditNoteDialog(initialNote: String, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+    var note by remember { mutableStateOf(initialNote) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Notatka do pomiaru") },
+        text = {
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Treść notatki") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+        },
+        confirmButton = { Button(onClick = { onSubmit(note) }) { Text("Zapisz") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddSessionDialog(
+    clients: List<UserResponse>,
+    exercises: List<ClientExercise>,
+    initialClientId: Int?,
+    initialClientName: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (Int, String, String, Int, List<DraftExercise>, Boolean) -> Unit
+) {
+    // --- 1. Informacje o treningu ---
+    var title by remember { mutableStateOf("") }
+    var startTime by remember { mutableStateOf("") }
+    var expandedClient by remember { mutableStateOf(false) }
+    var selectedClientId by remember { mutableStateOf(initialClientId) }
+    var clientSearchQuery by remember { mutableStateOf(initialClientName ?: "") }
+
+    // --- 2. Informacje o dodawanym ćwiczeniu ---
+    var expandedExercise by remember { mutableStateOf(false) }
+    var selectedExerciseId by remember { mutableStateOf<Int?>(null) }
+    var exerciseSearchQuery by remember { mutableStateOf("") }
+    var sets by remember { mutableStateOf("") }
+    var reps by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+
+    val draftList = remember { mutableStateListOf<DraftExercise>() }
+    val scrollState = rememberScrollState()
+
+    val filteredClients = clients.filter { "${it.firstName} ${it.lastName}".contains(clientSearchQuery, ignoreCase = true) }
+    val filteredExercises = exercises.filter { it.name.contains(exerciseSearchQuery, ignoreCase = true) }
+
+    val context = LocalContext.current
+    val calendar = Calendar.getInstance()
+
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            startTime = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Kreator nowego treningu", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("1. Podstawowe informacje", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Green80)
+                
+                ExposedDropdownMenuBox(expanded = expandedClient, onExpandedChange = { expandedClient = !expandedClient }) {
+                    OutlinedTextField(
+                        value = clientSearchQuery,
+                        onValueChange = { clientSearchQuery = it; expandedClient = true; selectedClientId = null },
+                        label = { Text("Wyszukaj i wybierz klienta") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedClient) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    if (filteredClients.isNotEmpty() && expandedClient) {
+                        ExposedDropdownMenu(expanded = expandedClient, onDismissRequest = { expandedClient = false }) {
+                            filteredClients.forEach { client ->
+                                DropdownMenuItem(
+                                    text = { Text("${client.firstName} ${client.lastName}") },
+                                    onClick = { selectedClientId = client.id; clientSearchQuery = "${client.firstName} ${client.lastName}"; expandedClient = false }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Tytuł treningu (np. 'Trening Pull')") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = startTime,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Data treningu") },
+                        trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = "Wybierz datę") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(modifier = Modifier.matchParentSize().clickable { datePickerDialog.show() })
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Text("2. Dodaj ćwiczenia do planu", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Green80)
+
+                ExposedDropdownMenuBox(
+                    expanded = expandedExercise,
+                    onExpandedChange = { expandedExercise = !expandedExercise }
+                ) {
+                    OutlinedTextField(
+                        value = exerciseSearchQuery,
+                        onValueChange = { exerciseSearchQuery = it; expandedExercise = true; selectedExerciseId = null },
+                        label = { Text("Wyszukaj ćwiczenie...") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedExercise) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    if (filteredExercises.isNotEmpty() && expandedExercise) {
+                        ExposedDropdownMenu(
+                            expanded = expandedExercise,
+                            onDismissRequest = { expandedExercise = false }
+                        ) {
+                            filteredExercises.forEach { exercise ->
+                                DropdownMenuItem(
+                                    text = { Text(exercise.name) },
+                                    onClick = {
+                                        selectedExerciseId = exercise.id
+                                        exerciseSearchQuery = exercise.name
+                                        expandedExercise = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = sets,
+                        onValueChange = { sets = it },
+                        label = { Text("Serie") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = reps,
+                        onValueChange = { reps = it },
+                        label = { Text("Powt.") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = weight,
+                        onValueChange = { weight = it },
+                        label = { Text("Ciężar") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val exId = selectedExerciseId
+                        val s = sets.toIntOrNull()
+                        val r = reps.toIntOrNull()
+                        val w = weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        if (exId != null && s != null && r != null) {
+                            val exName = exercises.find { it.id == exId }?.name ?: "Nieznane"
+                            draftList.add(DraftExercise(exId, exName, s, r, w))
+                            selectedExerciseId = null
+                            exerciseSearchQuery = ""
+                            sets = ""
+                            reps = ""
+                            weight = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Dodaj", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Dodaj ćwiczenie do listy")
+                }
+
+                if (draftList.isNotEmpty()) {
+                    Text("Zaplanowane ćwiczenia (${draftList.size}):", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        draftList.forEach { draft ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp)).padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(draft.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.DarkGray)
+                                    Text("${draft.sets}x${draft.reps} @ ${draft.weight}kg", fontSize = 12.sp, color = Color.Gray)
+                                }
+                                IconButton(
+                                    onClick = { draftList.remove(draft) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val finalDrafts = draftList.toMutableList()
+                    val exId = selectedExerciseId
+                    val s = sets.toIntOrNull()
+                    val r = reps.toIntOrNull()
+                    val w = weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    
+                    if (exId != null && s != null && r != null) {
+                        val exName = exercises.find { it.id == exId }?.name ?: "Nieznane"
+                        finalDrafts.add(DraftExercise(exId, exName, s, r, w))
+                    }
+
+                    val clientId = selectedClientId
+                    if (clientId != null && title.isNotBlank() && startTime.isNotBlank()) {
+                        val time = if (startTime.contains("T")) startTime else "${startTime}T12:00:00"
+                        onSubmit(clientId, title, time, 60, finalDrafts, false)
+                    }
+                }) { Text("Zapisz jako szkic") }
+                
+                Button(onClick = {
+                    val finalDrafts = draftList.toMutableList()
+                    val exId = selectedExerciseId
+                    val s = sets.toIntOrNull()
+                    val r = reps.toIntOrNull()
+                    val w = weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    
+                    if (exId != null && s != null && r != null) {
+                        val exName = exercises.find { it.id == exId }?.name ?: "Nieznane"
+                        finalDrafts.add(DraftExercise(exId, exName, s, r, w))
+                    }
+
+                    val clientId = selectedClientId
+                    if (clientId != null && title.isNotBlank() && startTime.isNotBlank() && finalDrafts.isNotEmpty()) {
+                        val time = if (startTime.contains("T")) startTime else "${startTime}T12:00:00"
+                        onSubmit(clientId, title, time, 60, finalDrafts, true)
+                    }
+                }, colors = ButtonDefaults.buttonColors(containerColor = Green80)) { 
+                    Text("Wyślij do klienta") 
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj", color = Color.Gray) } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddSessionExerciseDialog(
+    exercises: List<ClientExercise>,
+    onDismiss: () -> Unit,
+    onSubmitMultiple: (List<DraftExercise>) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedExerciseId by remember { mutableStateOf<Int?>(null) }
+    var exerciseSearchQuery by remember { mutableStateOf("") }
+    var sets by remember { mutableStateOf("") }
+    var reps by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+
+    val draftList = remember { mutableStateListOf<DraftExercise>() }
+    val filteredExercises = exercises.filter { it.name.contains(exerciseSearchQuery, ignoreCase = true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Kreator planu ćwiczeń", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                            value = exerciseSearchQuery,
+                            onValueChange = { exerciseSearchQuery = it; expanded = true; selectedExerciseId = null },
+                            label = { Text("Wyszukaj ćwiczenie...") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                        if (filteredExercises.isNotEmpty() && expanded) {
+                            ExposedDropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                filteredExercises.forEach { exercise ->
+                                    DropdownMenuItem(
+                                        text = { Text(exercise.name) },
+                                        onClick = {
+                                            selectedExerciseId = exercise.id
+                                            exerciseSearchQuery = exercise.name
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = sets,
+                        onValueChange = { sets = it },
+                        label = { Text("Serie") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = reps,
+                        onValueChange = { reps = it },
+                        label = { Text("Powt.") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = weight,
+                        onValueChange = { weight = it },
+                        label = { Text("Ciężar") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Button(
+                    onClick = {
+                        val exId = selectedExerciseId
+                        val s = sets.toIntOrNull()
+                        val r = reps.toIntOrNull()
+                        val w = weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        if (exId != null && s != null && r != null) {
+                            val exName = exercises.find { it.id == exId }?.name ?: "Nieznane"
+                            draftList.add(DraftExercise(exId, exName, s, r, w))
+                            selectedExerciseId = null
+                            exerciseSearchQuery = ""
+                            sets = ""
+                            reps = ""
+                            weight = ""
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Dodaj", modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Dodaj do listy")
+                }
+
+                if (draftList.isNotEmpty()) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Text("Na liście do zapisu (${draftList.size}):", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 160.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(draftList) { draft ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp)).padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(draft.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.DarkGray)
+                                    Text("${draft.sets}x${draft.reps} @ ${draft.weight}kg", fontSize = 12.sp, color = Color.Gray)
+                                }
+                                IconButton(
+                                    onClick = { draftList.remove(draft) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val finalDrafts = draftList.toMutableList()
+                val exId = selectedExerciseId
+                val s = sets.toIntOrNull()
+                val r = reps.toIntOrNull()
+                val w = weight.replace(",", ".").toDoubleOrNull() ?: 0.0
+                
+                // Jeżeli użytkownik wpisał dane, ale zapomniał kliknąć "Dodaj do listy" przed zapisem, inteligentnie dodajemy to za niego
+                if (exId != null && s != null && r != null) {
+                    val exName = exercises.find { it.id == exId }?.name ?: "Nieznane"
+                    finalDrafts.add(DraftExercise(exId, exName, s, r, w))
+                }
+                
+                if (finalDrafts.isNotEmpty()) {
+                    onSubmitMultiple(finalDrafts)
+                } else {
+                    onDismiss()
+                }
+            }, colors = ButtonDefaults.buttonColors(containerColor = Green80)) { Text("Zapisz wszystko do planu") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj", color = Color.Gray) } }
+    )
+}
+
+@Composable
+fun TrainerExerciseChartDialog(
+    exerciseName: String,
+    sessionExercises: List<ClientSessionExercise>,
+    trainingSessions: List<ClientTrainingSession>,
+    onDismiss: () -> Unit
+) {
+    val relatedExercises = sessionExercises.filter { it.exerciseName == exerciseName }
+    val dataPoints = relatedExercises.mapNotNull { ex ->
+        val session = trainingSessions.find { it.id == ex.sessionId }
+        if (session != null) session.date to ex.weight.toFloat() else null
+    }.sortedBy { it.first }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Wykres zaleceń: $exerciseName", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (dataPoints.isEmpty()) {
+                    Text("Brak danych historycznych z zaleceń.", color = Color.Gray)
+                } else {
+                    Text("Zalecony ciężar w przeszłości:", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                        items(dataPoints) { (date, weight) ->
+                            Text("• $date - $weight kg", fontSize = 14.sp, color = Color.DarkGray, modifier = Modifier.padding(vertical = 2.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij") } }
+    )
+}
+
+@Composable
+fun SessionExecutionDialog(session: ClientTrainingSession, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {
+    val sessionDateStr = session.date.substringBefore("T").substringBefore(" ")
+    val sessionClientName = session.clientName ?: ""
+    val filteredWorkouts = workouts.filter { 
+        it.sessionId == session.id || 
+        (it.clientName == sessionClientName && it.date.substringBefore("T").substringBefore(" ") == sessionDateStr)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Realizacja treningu", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Trening: ${session.title}", fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(12.dp))
+                if (filteredWorkouts.isEmpty()) {
+                    Text("Klient jeszcze nie zapisał wyników lub data się nie zgadza.", color = Color.Gray)
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(filteredWorkouts) { workout ->
+                            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
+                                Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                    Text(workout.exerciseName, fontWeight = FontWeight.Bold, color = Color(0xFF1E88E5))
+                                    Text("Zrobiono: ${workout.sets} serii x ${workout.reps} powt. @ ${workout.weight} kg", fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij") } }
+    )
+}
+
+@Composable
+fun ClientRealWorkoutsDialog(clientName: String, workouts: List<ClientWorkoutDto>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Historia ćwiczeń: $clientName", fontWeight = FontWeight.Bold) },
+        text = {
+            if (workouts.isEmpty()) {
+                Text("Klient nie zapisał jeszcze żadnych wyników.", color = Color.Gray)
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(workouts.sortedByDescending { it.id }) { workout ->
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)), elevation = CardDefaults.cardElevation(1.dp)) {
+                            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                Text(workout.exerciseName, fontWeight = FontWeight.Bold, color = Color(0xFF1E88E5))
+                                Text("Wynik: ${workout.sets}x${workout.reps} @ ${workout.weight} kg", fontSize = 14.sp)
+                                Text("Data: ${workout.date}", fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij") } }
+    )
+}
