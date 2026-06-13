@@ -542,7 +542,12 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>, onSaveResults:
                     // Dynamicznie uzupełniamy stan wejść dla ćwiczeń, gdy dane wreszcie załadują się z backendu
                     session.exercises.forEach { ex ->
                         if (!inputs.containsKey(ex.exerciseId)) {
-                            inputs[ex.exerciseId] = ExerciseInputState(ex.sets.toString(), ex.reps.toString(), ex.weight.toString())
+                            val isTime = ExercisePlanHelper.isTimeBased(ex.exerciseName)
+                            inputs[ex.exerciseId] = ExerciseInputState(
+                                ex.sets.toString(),
+                                ex.reps.toString(),
+                                if (isTime) "" else ex.weight.toString()
+                            )
                         }
                     }
 
@@ -564,13 +569,16 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>, onSaveResults:
                                 )
                             } else {
                                 session.exercises.forEach { exercise ->
-                                    val isTimeBased = exercise.exerciseName.contains("Deska", ignoreCase = true) || exercise.exerciseName.contains("Plank", ignoreCase = true)
-                                    val repsLabel = if (isTimeBased) "sek." else "powt."
-
+                                    val isTimeBased = ExercisePlanHelper.isTimeBased(exercise.exerciseName)
                                     val input = inputs[exercise.exerciseId]
 
                                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                         Text(text = "• ${exercise.exerciseName}", fontWeight = FontWeight.Bold, color = Color(0xFF37474F), fontSize = 14.sp)
+                                        Text(
+                                            ExercisePlanHelper.formatPlan(exercise.exerciseName, exercise.sets, exercise.reps, exercise.weight),
+                                            fontSize = 12.sp,
+                                            color = Color.Gray
+                                        )
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                                             OutlinedTextField(
                                                 value = input?.sets?.value ?: "",
@@ -582,17 +590,19 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>, onSaveResults:
                                             OutlinedTextField(
                                                 value = input?.reps?.value ?: "",
                                                 onValueChange = { input?.reps?.value = it },
-                                                label = { Text(repsLabel) },
+                                                label = { Text(if (isTimeBased) "Czas (sek.)" else "Powtórzenia") },
                                                 modifier = Modifier.weight(1f),
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                             )
-                                            OutlinedTextField(
-                                                value = input?.weight?.value ?: "",
-                                                onValueChange = { input?.weight?.value = it },
-                                                label = { Text("Ciężar (kg)") },
-                                                modifier = Modifier.weight(1f),
-                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                                            )
+                                            if (!isTimeBased) {
+                                                OutlinedTextField(
+                                                    value = input?.weight?.value ?: "",
+                                                    onValueChange = { input?.weight?.value = it },
+                                                    label = { Text("Ciężar (kg)") },
+                                                    modifier = Modifier.weight(1f),
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -608,7 +618,8 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>, onSaveResults:
                                                     exerciseName = ex.exerciseName,
                                                     sets = inp?.sets?.value?.toIntOrNull() ?: ex.sets,
                                                     reps = inp?.reps?.value?.toIntOrNull() ?: ex.reps,
-                                                    weight = inp?.weight?.value?.replace(",", ".")?.toDoubleOrNull() ?: ex.weight
+                                                    weight = if (ExercisePlanHelper.isTimeBased(ex.exerciseName)) 0.0
+                                                        else inp?.weight?.value?.replace(",", ".")?.toDoubleOrNull() ?: ex.weight
                                                 )
                                             }
                                             onSaveResults(session.id, resultsToSave)

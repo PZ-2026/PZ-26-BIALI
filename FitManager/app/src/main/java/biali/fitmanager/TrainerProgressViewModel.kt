@@ -88,50 +88,18 @@ class TrainerProgressViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             val request = CreateSessionRequest(clientId, title, startTime, durationMinutes)
-            
+
             when (val result = repository.addTrainerSession(request)) {
                 is ApiResult.Success -> {
-                    // Niezawodne wyciąganie ID utworzonej sesji, ignorując problemy z parsowaniem Retrofit/Gson
-                    val sessionId = try {
-                        var extractedId = -1
-                        val data = result.data
-                        if (data != null) {
-                            if (data is Number) {
-                                extractedId = data.toInt()
-                            } else if (data is Map<*, *>) {
-                                extractedId = (data["id"] as? Number)?.toInt() ?: (data["id"] as? String)?.toIntOrNull() ?: -1
-                            } else {
-                                try {
-                                    val idField = data.javaClass.getDeclaredField("id")
-                                    idField.isAccessible = true
-                                    extractedId = (idField.get(data) as? Number)?.toInt() ?: -1
-                                } catch (e: Exception) {
-                                    try {
-                                        val idMethod = data.javaClass.getMethod("getId")
-                                        extractedId = (idMethod.invoke(data) as? Number)?.toInt() ?: -1
-                                    } catch (e2: Exception) {
-                                        val match = Regex("id[\"\\s:=]*(\\d+)", RegexOption.IGNORE_CASE).find(data.toString())
-                                        extractedId = match?.groupValues?.get(1)?.toInt() ?: -1
-                                    }
-                                }
-                            }
-                        }
-                        extractedId
-                    } catch (e: Exception) {
-                        val match = Regex("id[\"\\s:=]*(\\d+)", RegexOption.IGNORE_CASE).find(result.data.toString())
-                        match?.groupValues?.get(1)?.toInt() ?: -1
+                    val sessionId = result.data.id
+                    for (draft in drafts) {
+                        val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                        repository.addSessionExercise(sessionId, exRequest)
                     }
-
-                    if (sessionId != -1) {
-                        for (draft in drafts) {
-                            val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
-                            repository.addSessionExercise(sessionId, exRequest)
-                        }
-                        if (sendImmediately) {
-                            repository.sendSessionToClient(sessionId)
-                        }
+                    if (sendImmediately) {
+                        repository.sendSessionToClient(sessionId)
                     }
-                    fetchData() // Odśwież widok
+                    fetchData()
                 }
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
                 else -> _state.update { it.copy(isLoading = false) }
@@ -193,5 +161,94 @@ class TrainerProgressViewModel : ViewModel() {
                 else -> _state.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    fun updateDraftSession(
+        sessionId: Int,
+        title: String,
+        startTime: String,
+        durationMinutes: Int,
+        originalExerciseIds: Set<Int>,
+        drafts: List<DraftExercise>
+    ) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+
+            val sessionRequest = UpdateSessionRequest(title, startTime, durationMinutes)
+            when (val sessionResult = repository.updateTrainerSession(sessionId, sessionRequest)) {
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = sessionResult.message, isLoading = false) }
+                    return@launch
+                }
+                else -> Unit
+            }
+
+            val currentIds = drafts.mapNotNull { it.sessionExerciseId }.toSet()
+            for (removedId in originalExerciseIds - currentIds) {
+                repository.deleteSessionExercise(removedId)
+            }
+
+            for (draft in drafts) {
+                val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                if (draft.sessionExerciseId != null) {
+                    repository.updateSessionExercise(
+                        draft.sessionExerciseId,
+                        UpdateSessionExerciseRequest(draft.sets, draft.reps, draft.weight)
+                    )
+                } else {
+                    repository.addSessionExercise(sessionId, exRequest)
+                }
+            }
+
+            fetchData()
+        }
+    }
+
+    fun updateAndSendDraftSession(
+        sessionId: Int,
+        title: String,
+        startTime: String,
+        durationMinutes: Int,
+        originalExerciseIds: Set<Int>,
+        drafts: List<DraftExercise>
+    ) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+
+            val sessionRequest = UpdateSessionRequest(title, startTime, durationMinutes)
+            when (val sessionResult = repository.updateTrainerSession(sessionId, sessionRequest)) {
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = sessionResult.message, isLoading = false) }
+                    return@launch
+                }
+                else -> Unit
+            }
+
+            val currentIds = drafts.mapNotNull { it.sessionExerciseId }.toSet()
+            for (removedId in originalExerciseIds - currentIds) {
+                repository.deleteSessionExercise(removedId)
+            }
+
+            for (draft in drafts) {
+                if (draft.sessionExerciseId != null) {
+                    repository.updateSessionExercise(
+                        draft.sessionExerciseId,
+                        UpdateSessionExerciseRequest(draft.sets, draft.reps, draft.weight)
+                    )
+                } else {
+                    repository.addSessionExercise(
+                        sessionId,
+                        AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                    )
+                }
+            }
+
+            repository.sendSessionToClient(sessionId)
+            fetchData()
+        }
+    }
+
+    fun clearError() {
+        _state.update { it.copy(error = null) }
     }
 }

@@ -192,7 +192,14 @@ public class ClientWorkoutController {
     public ResponseEntity<?> completeSession(Principal principal, @PathVariable int sessionId, @RequestBody CompleteSessionRequest req) {
         String email = principal.getName();
         Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
-        
+
+        Integer confirmedCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reservations WHERE user_id = ? AND session_id = ? AND status = 'CONFIRMED'",
+                Integer.class, clientId, sessionId);
+        if (confirmedCount == null || confirmedCount == 0) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse("Ten trening nie jest dostępny do ukończenia."));
+        }
+
         for (SetLogDto log : req.logs()) {
             jdbcTemplate.update("INSERT INTO client_workouts (client_id, exercise_id, session_id, weight, sets, reps, workout_date) VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE)",
                     clientId, log.exerciseId(), sessionId, log.weight(), log.setNumber(), log.reps());
