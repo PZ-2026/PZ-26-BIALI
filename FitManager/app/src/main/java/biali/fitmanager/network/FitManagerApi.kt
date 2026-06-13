@@ -22,6 +22,7 @@ data class AssignedSessionDto(val id: Int, val title: String, val date: String, 
 
 data class SetLogDto(val exerciseId: Int, val setNumber: Int, val weight: Double, val reps: Int)
 data class CompleteSessionRequest(val logs: List<SetLogDto>)
+data class CreateSessionResponse(val id: Int)
 
 data class LogWeightRequest(val weight: Double)
 data class UpdateProgressNoteRequest(val notes: String)
@@ -93,7 +94,10 @@ interface FitManagerApi {
     suspend fun updateProgressNote(@Path("id") id: Int, @Body request: UpdateProgressNoteRequest): Response<Void>
 
     @POST("api/trainer/sessions")
-    suspend fun addTrainerSession(@Body request: biali.fitmanager.CreateSessionRequest): Response<Void>
+    suspend fun addTrainerSession(@Body request: biali.fitmanager.CreateSessionRequest): Response<CreateSessionResponse>
+
+    @PUT("api/trainer/sessions/{sessionId}")
+    suspend fun updateTrainerSession(@Path("sessionId") sessionId: Int, @Body request: biali.fitmanager.UpdateSessionRequest): Response<Void>
 
     @POST("api/trainer/sessions/{sessionId}/send")
     suspend fun sendSessionToClient(@Path("sessionId") sessionId: Int): Response<Void>
@@ -109,6 +113,9 @@ interface FitManagerApi {
 
     @POST("api/trainer/sessions/{sessionId}/exercises")
     suspend fun addSessionExercise(@Path("sessionId") sessionId: Int, @Body request: AddSessionExerciseRequest): Response<Void>
+
+    @PUT("api/trainer/sessions/exercises/{id}")
+    suspend fun updateSessionExercise(@Path("id") id: Int, @Body request: biali.fitmanager.UpdateSessionExerciseRequest): Response<Void>
 
     @DELETE("api/trainer/sessions/exercises/{id}")
     suspend fun deleteSessionExercise(@Path("id") id: Int): Response<Void>

@@ -6,16 +6,19 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,9 +34,6 @@ import kotlinx.coroutines.launch
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
 import androidx.compose.runtime.Composable
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
-import java.time.format.DateTimeFormatter
 
 class TrainersActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,14 +64,18 @@ class TrainersActivity : ComponentActivity() {
                     }
                 }
 
-                // Navigate to Home when trainer purchase succeeds
                 LaunchedEffect(state.actionSuccess) {
-                    if (state.actionSuccess == "Pomyślnie wybrano trenera!") {
-                        val intent = Intent(this@TrainersActivity, HomeActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    state.actionSuccess?.let { msg ->
+                        if (msg == "Pomyślnie wybrano trenera!") {
+                            val intent = Intent(this@TrainersActivity, HomeActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            }
+                            startActivity(intent)
+                            finish()
+                        } else {
+                            coroutineScope.launch { snackbarHostState.showSnackbar(msg) }
+                            viewModel.clearActionSuccess()
                         }
-                        startActivity(intent)
-                        finish()
                     }
                 }
 
@@ -120,6 +124,7 @@ class TrainersActivity : ComponentActivity() {
                                 trainerIdToResign = trainerId
                                 trainerEndDateForResign = endDate
                             },
+                            onSaveWorkoutResults = { sId, results -> viewModel.saveWorkoutResults(sId, results) },
                             currentTrainerId = state.currentTrainerId,
                             currentTrainerEndDate = state.currentTrainerEndDate,
                             currentTrainerSessions = state.currentTrainerSessions
@@ -243,7 +248,6 @@ fun TrainersTopBar(showBack: Boolean, onBack: () -> Unit, onClose: () -> Unit) {
     )
 }
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TrainersListContent(
     modifier: Modifier = Modifier,
@@ -256,19 +260,7 @@ fun TrainersListContent(
     currentTrainer: UserResponse?,
     currentTrainerEndDate: String?
 ) {
-    // Formatter do docelowego formatu
-    val outputFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-
-    // Jeśli backend daje np. "2025-05-04" (ISO), używamy tego:
-    val inputFormatter = DateTimeFormatter.ISO_LOCAL_DATE
-
-    val formattedEndDate = try {
-        currentTrainerEndDate?.let {
-            LocalDate.parse(it, inputFormatter).format(outputFormatter)
-        }
-    } catch (e: Exception) {
-        null // fallback jeśli format się nie zgadza
-    }
+    val formattedEndDate = currentTrainerEndDate?.let { formatDisplayDate(it) }
 
     Column(
         modifier = modifier
@@ -397,6 +389,7 @@ fun TrainerDetailsContent(
     successMessage: String?,
     onPickTrainer: (UserResponse) -> Unit,
     onResignTrainer: (Int, String?) -> Unit,
+    onSaveWorkoutResults: (Int, List<WorkoutResultDraft>) -> Unit,
     currentTrainerId: Int?,
     currentTrainerEndDate: String?,
     currentTrainerSessions: List<AssignedSessionDto>
@@ -476,7 +469,7 @@ fun TrainerDetailsContent(
         val isCurrentTrainer = trainer.id == currentTrainerId
 
         if (isCurrentTrainer) {
-            TrainerWorkoutPlanSection(currentTrainerSessions)
+            TrainerWorkoutPlanSection(currentTrainerSessions, onSaveWorkoutResults)
         }
 
         if (isLoading) {
@@ -505,9 +498,16 @@ fun TrainerDetailsContent(
     }
 }
 
+class ExerciseInputState(initialSets: String, initialReps: String, initialWeight: String) {
+    val sets = mutableStateOf(initialSets)
+    val reps = mutableStateOf(initialReps)
+    val weight = mutableStateOf(initialWeight)
+}
+
 @Composable
-fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
-    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>, onSaveResults: (Int, List<WorkoutResultDraft>) -> Unit) {
+    val sdf = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+    val today = sdf.format(java.util.Date())
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -537,6 +537,20 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
                 }
             } else {
                 sessions.forEach { session ->
+                    val inputs = remember(session.id) { mutableMapOf<Int, ExerciseInputState>() }
+                    
+                    // Dynamicznie uzupełniamy stan wejść dla ćwiczeń, gdy dane wreszcie załadują się z backendu
+                    session.exercises.forEach { ex ->
+                        if (!inputs.containsKey(ex.exerciseId)) {
+                            val isTime = ExercisePlanHelper.isTimeBased(ex.exerciseName)
+                            inputs[ex.exerciseId] = ExerciseInputState(
+                                ex.sets.toString(),
+                                ex.reps.toString(),
+                                if (isTime) "" else ex.weight.toString()
+                            )
+                        }
+                    }
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(14.dp),
@@ -555,14 +569,66 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
                                 )
                             } else {
                                 session.exercises.forEach { exercise ->
-                                    val isTimeBased = exercise.exerciseName.contains("Deska", ignoreCase = true) || exercise.exerciseName.contains("Plank", ignoreCase = true)
-                                    val repsLabel = if (isTimeBased) "sek." else "powt."
-                                    val weightLabel = if (exercise.weight > 0) " | ${exercise.weight} kg" else ""
-                                    Text(
-                                        text = "• ${exercise.exerciseName}: ${exercise.sets}x${exercise.reps} $repsLabel$weightLabel",
-                                        fontSize = 14.sp,
-                                        color = Color(0xFF37474F)
-                                    )
+                                    val isTimeBased = ExercisePlanHelper.isTimeBased(exercise.exerciseName)
+                                    val input = inputs[exercise.exerciseId]
+
+                                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                        Text(text = "• ${exercise.exerciseName}", fontWeight = FontWeight.Bold, color = Color(0xFF37474F), fontSize = 14.sp)
+                                        Text(
+                                            ExercisePlanHelper.formatPlan(exercise.exerciseName, exercise.sets, exercise.reps, exercise.weight),
+                                            fontSize = 12.sp,
+                                            color = Color.Gray
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                            OutlinedTextField(
+                                                value = input?.sets?.value ?: "",
+                                                onValueChange = { input?.sets?.value = it },
+                                                label = { Text("Serie") },
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                            )
+                                            OutlinedTextField(
+                                                value = input?.reps?.value ?: "",
+                                                onValueChange = { input?.reps?.value = it },
+                                                label = { Text(if (isTimeBased) "Czas (sek.)" else "Powtórzenia") },
+                                                modifier = Modifier.weight(1f),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                            )
+                                            if (!isTimeBased) {
+                                                OutlinedTextField(
+                                                    value = input?.weight?.value ?: "",
+                                                    onValueChange = { input?.weight?.value = it },
+                                                    label = { Text("Ciężar (kg)") },
+                                                    modifier = Modifier.weight(1f),
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if (session.status != "COMPLETED") {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            val resultsToSave = session.exercises.map { ex ->
+                                                val inp = inputs[ex.exerciseId]
+                                                WorkoutResultDraft(
+                                                    exerciseId = ex.exerciseId,
+                                                    exerciseName = ex.exerciseName,
+                                                    sets = inp?.sets?.value?.toIntOrNull() ?: ex.sets,
+                                                    reps = inp?.reps?.value?.toIntOrNull() ?: ex.reps,
+                                                    weight = if (ExercisePlanHelper.isTimeBased(ex.exerciseName)) 0.0
+                                                        else inp?.weight?.value?.replace(",", ".")?.toDoubleOrNull() ?: ex.weight
+                                                )
+                                            }
+                                            onSaveResults(session.id, resultsToSave)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Green80)
+                                    ) {
+                                        Text("Zapisz wyniki treningu", color = Color.White)
+                                    }
                                 }
                             }
                         }
@@ -575,9 +641,11 @@ fun TrainerWorkoutPlanSection(sessions: List<AssignedSessionDto>) {
 
 private fun calculateRemainingDays(isoDateString: String): Long {
     return try {
-        val endDate = LocalDate.parse(isoDateString, DateTimeFormatter.ISO_LOCAL_DATE)
-        val today = LocalDate.now()
-        val days = ChronoUnit.DAYS.between(today, endDate)
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val endDate = sdf.parse(isoDateString) ?: return 0L
+        val today = java.util.Date()
+        val diff = endDate.time - today.time
+        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff)
         maxOf(days, 0L)
     } catch (e: Exception) {
         0L

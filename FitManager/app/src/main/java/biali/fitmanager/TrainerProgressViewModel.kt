@@ -84,6 +84,40 @@ class TrainerProgressViewModel : ViewModel() {
         }
     }
 
+    fun addSessionWithExercises(clientId: Int, title: String, startTime: String, durationMinutes: Int, drafts: List<DraftExercise>, sendImmediately: Boolean) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            val request = CreateSessionRequest(clientId, title, startTime, durationMinutes)
+
+            when (val result = repository.addTrainerSession(request)) {
+                is ApiResult.Success -> {
+                    val sessionId = result.data.id
+                    for (draft in drafts) {
+                        val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                        repository.addSessionExercise(sessionId, exRequest)
+                    }
+                    if (sendImmediately) {
+                        repository.sendSessionToClient(sessionId)
+                    }
+                    fetchData()
+                }
+                is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun addMultipleSessionExercises(sessionId: Int, drafts: List<DraftExercise>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            for (draft in drafts) {
+                val request = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                repository.addSessionExercise(sessionId, request)
+            }
+            fetchData() // Odświeża UI dopiero po dodaniu wszystkich ćwiczeń w tle
+        }
+    }
+
     fun sendSessionToClient(sessionId: Int) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
@@ -127,5 +161,94 @@ class TrainerProgressViewModel : ViewModel() {
                 else -> _state.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    fun updateDraftSession(
+        sessionId: Int,
+        title: String,
+        startTime: String,
+        durationMinutes: Int,
+        originalExerciseIds: Set<Int>,
+        drafts: List<DraftExercise>
+    ) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+
+            val sessionRequest = UpdateSessionRequest(title, startTime, durationMinutes)
+            when (val sessionResult = repository.updateTrainerSession(sessionId, sessionRequest)) {
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = sessionResult.message, isLoading = false) }
+                    return@launch
+                }
+                else -> Unit
+            }
+
+            val currentIds = drafts.mapNotNull { it.sessionExerciseId }.toSet()
+            for (removedId in originalExerciseIds - currentIds) {
+                repository.deleteSessionExercise(removedId)
+            }
+
+            for (draft in drafts) {
+                val exRequest = AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                if (draft.sessionExerciseId != null) {
+                    repository.updateSessionExercise(
+                        draft.sessionExerciseId,
+                        UpdateSessionExerciseRequest(draft.sets, draft.reps, draft.weight)
+                    )
+                } else {
+                    repository.addSessionExercise(sessionId, exRequest)
+                }
+            }
+
+            fetchData()
+        }
+    }
+
+    fun updateAndSendDraftSession(
+        sessionId: Int,
+        title: String,
+        startTime: String,
+        durationMinutes: Int,
+        originalExerciseIds: Set<Int>,
+        drafts: List<DraftExercise>
+    ) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+
+            val sessionRequest = UpdateSessionRequest(title, startTime, durationMinutes)
+            when (val sessionResult = repository.updateTrainerSession(sessionId, sessionRequest)) {
+                is ApiResult.Error -> {
+                    _state.update { it.copy(error = sessionResult.message, isLoading = false) }
+                    return@launch
+                }
+                else -> Unit
+            }
+
+            val currentIds = drafts.mapNotNull { it.sessionExerciseId }.toSet()
+            for (removedId in originalExerciseIds - currentIds) {
+                repository.deleteSessionExercise(removedId)
+            }
+
+            for (draft in drafts) {
+                if (draft.sessionExerciseId != null) {
+                    repository.updateSessionExercise(
+                        draft.sessionExerciseId,
+                        UpdateSessionExerciseRequest(draft.sets, draft.reps, draft.weight)
+                    )
+                } else {
+                    repository.addSessionExercise(
+                        sessionId,
+                        AddSessionExerciseRequest(draft.exerciseId, draft.sets, draft.reps, draft.weight)
+                    )
+                }
+            }
+
+            repository.sendSessionToClient(sessionId)
+            fetchData()
+        }
+    }
+
+    fun clearError() {
+        _state.update { it.copy(error = null) }
     }
 }
