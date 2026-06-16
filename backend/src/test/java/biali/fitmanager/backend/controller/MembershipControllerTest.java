@@ -33,6 +33,9 @@ import biali.fitmanager.backend.repository.MembershipRepository;
 import biali.fitmanager.backend.repository.MembershipTypeRepository;
 import biali.fitmanager.backend.repository.PaymentRepository;
 
+/**
+ * Testy jednostkowe {@link MembershipController}: tworzenie i zakup karnetów.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Testy kontrolera karnetow")
 class MembershipControllerTest {
@@ -56,6 +59,12 @@ class MembershipControllerTest {
         membershipController = new MembershipController(membershipRepository, appUserRepository, membershipTypeRepository, paymentRepository);
     }
 
+    /**
+     * Weryfikuje utworzenie płatności powiązanej z zapisanym karnetem.
+     *
+     * @param request MembershipUpsertRequest z typem karnetu 149.99 PLN
+     * @return status 201, {@link Membership} ACTIVE, Payment z membershipId i kwotą 149.99
+     */
     @Test
     @DisplayName("Tworzenie karnetu tworzy powiazana platnosc z membership_id")
     void createMembershipCreatesPaymentLinkedToSavedMembership() {
@@ -102,6 +111,12 @@ class MembershipControllerTest {
         assertEquals("SUCCESS", savedPayment.getStatus());
     }
 
+    /**
+     * Sprawdza zwrot 400 przy niekompletnym payloadzie karnetu.
+     *
+     * @param request MembershipUpsertRequest tylko z userId (brak typu i dat)
+     * @return status 400, {@link AuthErrorResponse} "Invalid membership payload", brak zapisu
+     */
     @Test
     @DisplayName("Tworzenie karnetu zwraca 400 dla nieprawidlowego payloadu")
     void createMembershipReturnsBadRequestForInvalidPayload() {
@@ -117,6 +132,12 @@ class MembershipControllerTest {
         verify(paymentRepository, never()).save(any(Payment.class));
     }
 
+    /**
+     * Potwierdza odrzucenie zakupu karnetu przy zbyt niskim saldzie.
+     *
+     * @param request PurchaseMembershipRequest (userId 11, typ karnetu 149.99 PLN)
+     * @return status 400, {@link AuthErrorResponse} "Insufficient funds", brak zapisu karnetu/płatności
+     */
     @Test
     @DisplayName("Zakup karnetu zwraca 400 gdy brak srodkow")
     void purchaseMembershipReturnsBadRequestWhenFundsAreInsufficient() {
@@ -144,6 +165,12 @@ class MembershipControllerTest {
         verify(paymentRepository, never()).save(any(Payment.class));
     }
 
+    /**
+     * Weryfikuje poprawny zakup karnetu wraz z aktualizacją salda i płatności.
+     *
+     * @param request PurchaseMembershipRequest (userId 12, saldo 300 PLN, karnet 149.99 PLN)
+     * @return status 201, saldo 150.01 PLN, Payment SUCCESS z membershipId
+     */
     @Test
     @DisplayName("Zakup karnetu tworzy karnet i platnosc gdy srodki wystarczajace")
     void purchaseMembershipCreatesMembershipAndPaymentWhenFundsAreEnough() {

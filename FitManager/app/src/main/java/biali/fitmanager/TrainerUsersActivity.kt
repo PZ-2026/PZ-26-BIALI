@@ -278,7 +278,18 @@ private fun buildTrainerClientSummary(
     }
 
     val datedSessions = clientSessions.mapNotNull { session ->
-        runCatching { LocalDate.parse(session.date, trainerSessionDateFormatter) }
+        val dateString = session.date
+        val isoMatch = Regex("^(\\d{4})-(\\d{2})-(\\d{2})").find(dateString)
+        val euMatch = Regex("^(\\d{2})\\.(\\d{2})\\.(\\d{4})").find(dateString)
+        val formattedDate = if (isoMatch != null) {
+            val (y, m, d) = isoMatch.destructured
+            "$d.$m.$y"
+        } else if (euMatch != null) {
+            euMatch.value
+        } else {
+            dateString.take(10).replace("-", ".")
+        }
+        runCatching { LocalDate.parse(formattedDate, trainerSessionDateFormatter) }
             .getOrNull()
             ?.let { parsedDate -> parsedDate to session }
     }

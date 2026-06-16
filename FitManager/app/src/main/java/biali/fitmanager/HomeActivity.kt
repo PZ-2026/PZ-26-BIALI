@@ -71,6 +71,7 @@ class HomeActivity : ComponentActivity() {
     private var currentTrainerId by mutableStateOf<Int?>(null)
     private var isTrainerLoading by mutableStateOf(true)
     private var assignedSessions by mutableStateOf<List<AssignedSessionDto>>(emptyList())
+    private var recordMessages by mutableStateOf<List<String>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,24 +103,31 @@ class HomeActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    MainContent(
-                        modifier = Modifier.padding(innerPadding),
-                        displayName = displayName,
-                        membership = membership,
-                        isMembershipLoading = isMembershipLoading,
-                        membershipTypes = membershipTypes,
-                        onBuyMembership = ::navigateToMemberships,
-                        trainerName = trainerName,
-                        trainerStartDate = trainerStartDate,
-                        trainerEndDate = trainerEndDate,
-                        isTrainerLoading = isTrainerLoading,
-                        onTrainerClick = {
-                            currentTrainerId?.let { navigateToTrainerDetails(it) }
-                        },
-                        onNavigateToProgress = ::navigateToProgress,
-                        assignedSessions = assignedSessions,
-                        onCompleteSession = ::completeSession
-                    )
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        MainContent(
+                            modifier = Modifier.fillMaxSize(),
+                            displayName = displayName,
+                            membership = membership,
+                            isMembershipLoading = isMembershipLoading,
+                            membershipTypes = membershipTypes,
+                            onBuyMembership = ::navigateToMemberships,
+                            trainerName = trainerName,
+                            trainerStartDate = trainerStartDate,
+                            trainerEndDate = trainerEndDate,
+                            isTrainerLoading = isTrainerLoading,
+                            onTrainerClick = {
+                                currentTrainerId?.let { navigateToTrainerDetails(it) }
+                            },
+                            onNavigateToProgress = ::navigateToProgress,
+                            assignedSessions = assignedSessions,
+                            onCompleteSession = ::completeSession
+                        )
+                        RecordCelebrationBanner(
+                            messages = recordMessages,
+                            onDismiss = { recordMessages = null },
+                            modifier = Modifier.align(Alignment.TopCenter)
+                        )
+                    }
                 }
             }
         }
@@ -215,10 +223,24 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
-    private fun completeSession(sessionId: Int, request: CompleteSessionRequest) {
+    private fun completeSession(session: AssignedSessionDto, request: CompleteSessionRequest) {
         lifecycleScope.launch {
-            when (val result = repository.completeSession(sessionId, request)) {
-                is ApiResult.Success -> refreshHomeData(refreshSecondary = true)
+            val existingWorkouts = when (val workoutsResult = repository.getMyWorkouts()) {
+                is ApiResult.Success -> workoutsResult.data
+                else -> emptyList()
+            }
+            val records = ExerciseProgressMetrics.detectNewRecords(existingWorkouts, session, request.logs)
+
+            when (val result = repository.completeSession(session.id, request)) {
+                is ApiResult.Success -> {
+                    if (records.isNotEmpty()) {
+                        recordMessages = records.map { it.message }
+                    } else {
+                        Toast.makeText(this@HomeActivity, "Trening zapisany!", Toast.LENGTH_SHORT).show()
+                    }
+                    refreshHomeData(refreshSecondary = true)
+                }
+                is ApiResult.Error -> Toast.makeText(this@HomeActivity, result.message, Toast.LENGTH_LONG).show()
                 else -> Unit
             }
         }
@@ -419,7 +441,7 @@ fun MainContent(
     onTrainerClick: () -> Unit,
     onNavigateToProgress: () -> Unit,
     assignedSessions: List<AssignedSessionDto>,
-    onCompleteSession: (Int, CompleteSessionRequest) -> Unit = { _, _ -> }
+    onCompleteSession: (AssignedSessionDto, CompleteSessionRequest) -> Unit = { _, _ -> }
 ) {
     val scrollState = rememberScrollState()
     var sessionToExecute by remember { mutableStateOf<AssignedSessionDto?>(null) }
@@ -473,7 +495,7 @@ fun MainContent(
         Spacer(modifier = Modifier.height(8.dp))
     }
 
-    if (sessionToExecute != null) {
+    if (sessionToExecute != null && sessionToExecute!!.status != "COMPLETED") {
         ExecuteSessionDialog(
             session = sessionToExecute!!,
             onDismiss = { sessionToExecute = null },
@@ -709,10 +731,10 @@ fun AssignedSessionCard(session: AssignedSessionDto, onExecute: () -> Unit) {
                 HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                 Spacer(modifier = Modifier.height(8.dp))
                 session.exercises.forEach { ex ->
-                    val isTimeBased = ex.exerciseName.contains("Deska", ignoreCase = true) || ex.exerciseName.contains("Plank", ignoreCase = true)
-                    val repsLabel = if (isTimeBased) "sek." else "powt."
-                    val wLabel = if (ex.weight > 0) " | ${ex.weight}kg" else ""
-                    Text("• ${ex.exerciseName}: ${ex.sets}x${ex.reps} $repsLabel$wLabel", fontSize = 14.sp)
+                    Text(
+                        "• ${ex.exerciseName}: ${ExercisePlanHelper.formatPlan(ex.exerciseName, ex.sets, ex.reps, ex.weight)}",
+                        fontSize = 14.sp
+                    )
                 }
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -736,12 +758,17 @@ data class SetEntry(val weight: String, val reps: String)
 fun ExecuteSessionDialog(
     session: AssignedSessionDto,
     onDismiss: () -> Unit,
-    onCompleteSession: (Int, CompleteSessionRequest) -> Unit
+    onCompleteSession: (AssignedSessionDto, CompleteSessionRequest) -> Unit
 ) {
     var sessionLogs by remember {
         mutableStateOf(
             session.exercises.associate { ex ->
-                ex.exerciseId to List(ex.sets) { SetEntry(weight = if (ex.weight > 0) ex.weight.toString() else "", reps = ex.reps.toString()) }
+                ex.exerciseId to List(ex.sets) {
+                    SetEntry(
+                        weight = if (!ExercisePlanHelper.isTimeBased(ex.exerciseName) && ex.weight > 0) ex.weight.toString() else "",
+                        reps = ex.reps.toString()
+                    )
+                }
             }
         )
     }
@@ -752,40 +779,46 @@ fun ExecuteSessionDialog(
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(session.exercises) { ex ->
+                    val isTimeBased = ExercisePlanHelper.isTimeBased(ex.exerciseName)
                     Column(modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(8.dp)).padding(12.dp)) {
                         Text(ex.exerciseName, fontWeight = FontWeight.Bold)
-                        val wPlan = if (ex.weight > 0) "${ex.weight}kg" else "-"
-                        Text("Plan wg trenera: ${ex.sets}x${ex.reps} | $wPlan", fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            "Plan wg trenera: ${ExercisePlanHelper.formatPlan(ex.exerciseName, ex.sets, ex.reps, ex.weight)}",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         val logs = sessionLogs[ex.exerciseId] ?: emptyList()
                         logs.forEachIndexed { index, setEntry ->
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp), 
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             ) {
                                 Text("S. ${index + 1}", modifier = Modifier.width(36.dp), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                if (!isTimeBased) {
+                                    OutlinedTextField(
+                                        value = setEntry.weight,
+                                        onValueChange = { newW ->
+                                            val newList = logs.toMutableList()
+                                            newList[index] = setEntry.copy(weight = newW)
+                                            sessionLogs = sessionLogs.toMutableMap().apply { put(ex.exerciseId, newList) }
+                                        },
+                                        label = { Text("Waga") },
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                    )
+                                }
                                 OutlinedTextField(
-                                    value = setEntry.weight, 
-                                    onValueChange = { newW -> 
-                                        val newList = logs.toMutableList()
-                                        newList[index] = setEntry.copy(weight = newW)
-                                        sessionLogs = sessionLogs.toMutableMap().apply { put(ex.exerciseId, newList) }
-                                    }, 
-                                    label = { Text("Waga") }, 
-                                    modifier = Modifier.weight(1f), 
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                                )
-                                OutlinedTextField(
-                                    value = setEntry.reps, 
-                                    onValueChange = { newR -> 
+                                    value = setEntry.reps,
+                                    onValueChange = { newR ->
                                         val newList = logs.toMutableList()
                                         newList[index] = setEntry.copy(reps = newR)
                                         sessionLogs = sessionLogs.toMutableMap().apply { put(ex.exerciseId, newList) }
-                                    }, 
-                                    label = { Text("Powt.") }, 
-                                    modifier = Modifier.weight(1f), 
+                                    },
+                                    label = { Text(if (isTimeBased) "Czas (sek.)" else "Powt.") },
+                                    modifier = Modifier.weight(1f),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                 )
                             }
@@ -805,7 +838,7 @@ fun ExecuteSessionDialog(
                             finalLogs.add(SetLogDto(exId, index + 1, w, r))
                         }
                     }
-                    onCompleteSession(session.id, CompleteSessionRequest(finalLogs))
+                    onCompleteSession(session, CompleteSessionRequest(finalLogs))
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
@@ -850,10 +883,7 @@ private fun generateSessionPdf(context: Context, session: AssignedSessionDto, ur
             canvas.drawText("Brak wprowadzonych ćwiczeń.", 50f, y, paint)
         } else {
             session.exercises.forEachIndexed { index, ex ->
-                val isTimeBased = ex.exerciseName.contains("Deska", ignoreCase = true) || ex.exerciseName.contains("Plank", ignoreCase = true)
-                val repsLabel = if (isTimeBased) "sek." else "powt."
-                val wLabel = if (ex.weight > 0) " | ${ex.weight}kg" else ""
-                val text = "${index + 1}. ${ex.exerciseName} - ${ex.sets} serie x ${ex.reps} $repsLabel$wLabel"
+                val text = "${index + 1}. ${ex.exerciseName} — ${ExercisePlanHelper.formatPlan(ex.exerciseName, ex.sets, ex.reps, ex.weight)}"
                 
                 canvas.drawText(text, 50f, y, paint)
                 y += 25f

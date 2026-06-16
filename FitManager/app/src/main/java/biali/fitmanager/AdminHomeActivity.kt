@@ -1,6 +1,7 @@
 package biali.fitmanager
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,15 +21,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -41,22 +50,24 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.launch
-import androidx.core.content.FileProvider
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
@@ -71,17 +82,29 @@ class AdminHomeActivity : ComponentActivity() {
             logout()
             return
         }
-        enableEdgeToEdge()
-        val viewModel = ViewModelProvider(this)[AdminDashboardViewModel::class.java]
-        setContent {
-            GymManagerTheme {
-                val state by viewModel.state.collectAsState()
 
-                LaunchedEffect(state.sessionExpired) {
-                    if (state.sessionExpired) {
-                        logout()
+        // Safe edge-to-edge: Samsung devices (e.g. SM-G781B) may crash/minimize
+        // when enableEdgeToEdge() is called. Wrap in try-catch.
+        try {
+            enableEdgeToEdge()
+        } catch (_: Exception) {
+            // Samsung-specific bug: silently ignore
+        }
+
+        val viewModel = ViewModelProvider(this)[AdminDashboardViewModel::class.java]
+
+        // Wrap the entire Compose content setup in a try-catch to prevent
+        // the app from minimizing if any exception occurs during rendering.
+        try {
+            setContent {
+                GymManagerTheme {
+                    val state by viewModel.state.collectAsState()
+
+                    LaunchedEffect(state.sessionExpired) {
+                        if (state.sessionExpired) {
+                            logout()
+                        }
                     }
-                }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -121,39 +144,49 @@ class AdminHomeActivity : ComponentActivity() {
                         onEditMembershipType = viewModel::fillMembershipTypeForm,
                         onDeleteMembershipType = viewModel::deleteMembershipType,
                         onGenerateReport = {
-                            val repo = biali.fitmanager.network.FitManagerRepository()
-                            this@AdminHomeActivity.lifecycleScope.launch {
-                                when (val res = repo.downloadUsersReportPdf()) {
-                                    is biali.fitmanager.network.ApiResult.Success -> {
-                                        try {
-                                            val cacheFile = withContext(Dispatchers.IO) {
-                                                val file = java.io.File(cacheDir, "users-report.pdf")
-                                                res.data.byteStream().use { input ->
-                                                    file.outputStream().use { output ->
-                                                        input.copyTo(output)
-                                                    }
-                                                }
-                                                file
-                                            }
-                                            openPdfFile(this@AdminHomeActivity, cacheFile)
-                                        } catch (ex: Exception) {
-                                            Toast.makeText(
-                                                this@AdminHomeActivity,
-                                                "Błąd zapisu/pliku: ${ex.message}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    }
-                                    is biali.fitmanager.network.ApiResult.Unauthorized -> {
-                                        android.widget.Toast.makeText(this@AdminHomeActivity, "Brak uprawnień.", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                    is biali.fitmanager.network.ApiResult.Error -> {
-                                        android.widget.Toast.makeText(this@AdminHomeActivity, res.message, android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
+                            this@AdminHomeActivity.generateUsersReport()
                         }
                     )
+                }
+                }
+            }
+        } catch (e: Exception) {
+            // If anything crashes during Compose setup, show a Toast instead of minimizing
+            android.util.Log.e("AdminHomeActivity", "Error setting up admin panel", e)
+            Toast.makeText(this, "Błąd inicjalizacji panelu: ${e.message}", Toast.LENGTH_LONG).show()
+            logout()
+        }
+    }
+
+    private fun generateUsersReport() {
+        val repo = biali.fitmanager.network.FitManagerRepository()
+        this.lifecycleScope.launch {
+            when (val res = repo.downloadUsersReportPdf()) {
+                is biali.fitmanager.network.ApiResult.Success -> {
+                    try {
+                        val cacheFile = withContext(Dispatchers.IO) {
+                            val file = java.io.File(cacheDir, "users-report.pdf")
+                            res.data.byteStream().use { input ->
+                                file.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            file
+                        }
+                        openPdfFile(this@AdminHomeActivity, cacheFile)
+                    } catch (ex: Exception) {
+                        Toast.makeText(
+                            this@AdminHomeActivity,
+                            "Błąd zapisu/pliku: ${ex.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+                is biali.fitmanager.network.ApiResult.Unauthorized -> {
+                    Toast.makeText(this@AdminHomeActivity, "Brak uprawnień.", Toast.LENGTH_SHORT).show()
+                }
+                is biali.fitmanager.network.ApiResult.Error -> {
+                    Toast.makeText(this@AdminHomeActivity, res.message, Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -194,16 +227,29 @@ private fun AdminTopBar(onLogout: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("FitManager", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = Green80,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("FitManager", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
         },
         actions = {
             TextButton(onClick = onLogout) {
-                Icon(Icons.Filled.ExitToApp, contentDescription = null)
+                Icon(Icons.Filled.ExitToApp, contentDescription = null, tint = Color(0xFF666666))
                 Spacer(modifier = Modifier.padding(horizontal = 4.dp))
-                Text("Wyloguj")
+                Text("Wyloguj", color = Color(0xFF666666))
             }
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.White,
+            titleContentColor = Color(0xFF1B5E20)
+        )
     )
 }
 
@@ -274,10 +320,53 @@ private fun AdminDashboardScreen(
             )
         }
 
-        state.message?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
-        state.error?.let { Text(text = it, fontWeight = FontWeight.SemiBold) }
+        state.message?.let {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = LightGreen80),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF2E7D32)
+                )
+            }
+        }
+        state.error?.let {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFC62828)
+                )
+            }
+        }
         if (state.isLoading) {
-            Text(text = "Ładowanie danych...")
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Green80
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ładowanie danych...", color = Color(0xFF666666))
+                }
+            }
         }
 
         AdminUsersSection(
@@ -319,6 +408,147 @@ private fun AdminDashboardScreen(
             onAssignClient = onAssignClient,
             onUnassignClient = onUnassignClient
         )
+
+        // Footer
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "FitManager v1.0 © 2025",
+            fontSize = 12.sp,
+            color = Color(0xFF999999),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun GymInfoCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = Green80,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "O siłowni",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1B5E20)
+                )
+            }
+
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+
+            InfoRow(
+                icon = Icons.Filled.LocationOn,
+                label = "Adres",
+                value = "ul. Sportowa 42, 00-001 Warszawa"
+            )
+            InfoRow(
+                icon = Icons.Filled.Call,
+                label = "Telefon",
+                value = "+48 123 456 789"
+            )
+            InfoRow(
+                icon = Icons.Filled.Email,
+                label = "E-mail",
+                value = "kontakt@biali-fitmanager.pl"
+            )
+            InfoRow(
+                icon = Icons.Filled.DateRange,
+                label = "Godziny otwarcia",
+                value = "Pon-Pt: 06:00-23:00\nSob-Nd: 08:00-20:00"
+            )
+
+            HorizontalDivider(color = Color(0xFFE0E0E0))
+
+            // Clickable map link
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF5F5F5))
+                    .clickable {
+                        openMap(context)
+                    }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = Green80,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Zobacz na mapie",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Green80
+                )
+            }
+        }
+    }
+}
+
+private fun openMap(context: android.content.Context) {
+    val gmmIntentUri = Uri.parse("geo:0,0?q=Siłownia+FitManager+Warszawa")
+    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
+        setPackage("com.google.android.apps.maps")
+    }
+    try {
+        context.startActivity(mapIntent)
+    } catch (_: Exception) {
+        val webIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://maps.google.com/?q=Siłownia+Warszawa")
+        )
+        context.startActivity(webIntent)
+    }
+}
+
+@Composable
+private fun InfoRow(icon: ImageVector, label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = Color(0xFF666666),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = Color(0xFF999999)
+            )
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                color = Color(0xFF333333)
+            )
+        }
     }
 }
 
@@ -400,7 +630,7 @@ private fun AdminUsersSection(
                     }
                 }
             }
-            HorizontalDivider()
+            HorizontalDivider(color = Color(0xFFE0E0E0))
             state.users.forEach { user ->
                 UserRow(user = user, onEdit = { onEditUser(user) }, onDelete = { onDeleteUser(user) })
             }
@@ -502,47 +732,68 @@ private fun AdminUserFormSection(
                 value = state.form.email,
                 onValueChange = { value -> onUserFieldChange { it.copy(email = value) } },
                 label = { Text("Email") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.password,
                 onValueChange = { value -> onUserFieldChange { it.copy(password = value) } },
                 label = { Text("Hasło (opcjonalne przy edycji)") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.role,
                 onValueChange = { value -> onUserFieldChange { it.copy(role = value.uppercase()) } },
                 label = { Text("Rola: ADMIN / TRAINER / CLIENT") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.firstName,
                 onValueChange = { value -> onUserFieldChange { it.copy(firstName = value) } },
                 label = { Text("Imię") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.lastName,
                 onValueChange = { value -> onUserFieldChange { it.copy(lastName = value) } },
                 label = { Text("Nazwisko") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.form.phoneNumber,
                 onValueChange = { value -> onUserFieldChange { it.copy(phoneNumber = value) } },
                 label = { Text("Telefon") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onSave) { Text("Zapisz") }
+                Button(
+                    onClick = onSave,
+                    colors = ButtonDefaults.buttonColors(containerColor = Green80, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Zapisz")
+                }
                 if (state.form.id.isNotBlank()) {
-                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                    OutlinedButton(
+                        onClick = onClear,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text("Anuluj edycję")
                     }
                 } else {
-                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                    OutlinedButton(
+                        onClick = onClear,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Wyczyść")
+                    }
                 }
             }
         }
@@ -569,26 +820,36 @@ private fun AdminTrainerClientsSection(
             OutlinedTextField(
                 value = state.trainerIdForClients,
                 onValueChange = onTrainerIdChange,
-                label = { Text("trainerId") },
-                modifier = Modifier.fillMaxWidth()
+                label = { Text("ID trenera") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             Button(onClick = onLoadTrainerClients, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2), contentColor = Color.White)) { Text("Pobierz klientów") }
 
             if (state.isTrainerClientsLoading) {
-                Text("Ładowanie klientów...")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = Green80
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Ładowanie klientów...", fontSize = 13.sp, color = Color(0xFF666666))
+                }
             }
 
             state.trainerClients.forEach { client ->
                 Text("#${client.id} • ${client.firstName} ${client.lastName} • ${client.email}", fontWeight = FontWeight.Medium)
             }
 
-            HorizontalDivider()
+            HorizontalDivider(color = Color(0xFFE0E0E0))
 
             OutlinedTextField(
                 value = state.clientIdForAssignment,
                 onValueChange = onClientIdChange,
-                label = { Text("clientId") },
-                modifier = Modifier.fillMaxWidth()
+                label = { Text("ID klienta") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onAssignClient, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2), contentColor = Color.White)) { Text("Przypisz") }
@@ -649,36 +910,49 @@ private fun AdminMembershipTypesSection(
                 value = state.membershipTypeForm.name,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(name = value) } },
                 label = { Text("Nazwa") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.price,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(price = value) } },
                 label = { Text("Cena") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.durationDays,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(durationDays = value) } },
                 label = { Text("Liczba dni") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
             )
             OutlinedTextField(
                 value = state.membershipTypeForm.description,
                 onValueChange = { value -> onMembershipTypeFieldChange { it.copy(description = value) } },
                 label = { Text("Opis (opcjonalnie)") },
                 modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
+                maxLines = 3,
+                shape = RoundedCornerShape(8.dp)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800), contentColor = Color.White)) { Text("Zapisz") }
                 if (state.membershipTypeForm.id.isNotBlank()) {
-                    OutlinedButton(onClick = onClear, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)) {
+                    OutlinedButton(
+                        onClick = onClear,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text("Anuluj edycję")
                     }
                 } else {
-                    OutlinedButton(onClick = onClear) { Text("Wyczyść") }
+                    OutlinedButton(
+                        onClick = onClear,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Wyczyść")
+                    }
                 }
             }
         }

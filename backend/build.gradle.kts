@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.springframework.boot.gradle.tasks.bundling.BootJar
 
 plugins {
@@ -37,16 +39,21 @@ dependencies {
 
 tasks.withType<Test> {
         useJUnitPlatform()
+        // Zawsze uruchamiaj testy — inaczej Gradle pokazuje tylko "UP-TO-DATE" bez listy PASSED.
+        outputs.upToDateWhen { false }
         testLogging {
                 events(
-                        org.gradle.api.tasks.testing.logging.TestLogEvent.PASSED,
-                        org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED,
-                        org.gradle.api.tasks.testing.logging.TestLogEvent.SKIPPED,
-                        org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT,
-                        org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR
+                        TestLogEvent.PASSED,
+                        TestLogEvent.FAILED,
+                        TestLogEvent.SKIPPED,
+                        TestLogEvent.STANDARD_OUT,
+                        TestLogEvent.STANDARD_ERROR
                 )
+                displayGranularity = 2
+                showCauses = true
+                showStackTraces = true
                 showStandardStreams = true
-                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                exceptionFormat = TestExceptionFormat.FULL
         }
 }
 

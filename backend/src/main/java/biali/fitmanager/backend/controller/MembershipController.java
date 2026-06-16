@@ -21,6 +21,9 @@ import biali.fitmanager.backend.model.Payment;
 import biali.fitmanager.backend.repository.PaymentRepository;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Zarządzanie karnetami: lista, zakup i CRUD.
+ */
 @RestController
 @RequestMapping("/api/memberships")
 @CrossOrigin(origins = "*") // Dodane dla ułatwienia komunikacji z frontendem
@@ -38,7 +41,12 @@ public class MembershipController {
         this.paymentRepository = paymentRepository;
     }
 
-    // 1. Pobieranie wszystkich karnetów (opcjonalnie filtrowanie po userId)
+    /**
+     * Zwraca karnety, opcjonalnie filtrowane po użytkowniku.
+     *
+     * @param userId opcjonalny filtr po ID użytkownika
+     * @return lista {@link Membership}
+     */
     @GetMapping
     public List<Membership> getMemberships(@RequestParam(required = false) Integer userId) {
         if (userId != null) {
@@ -47,7 +55,12 @@ public class MembershipController {
         return membershipRepository.findAll();
     }
 
-    // 2. Pobieranie pojedynczego karnetu po ID
+    /**
+     * Zwraca karnet po ID.
+     *
+     * @param id identyfikator karnetu
+     * @return 200 z {@link Membership}, 404 gdy nie znaleziono
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getMembership(@PathVariable Integer id) {
         return membershipRepository.findById(id)
@@ -56,6 +69,12 @@ public class MembershipController {
                         .body(new AuthErrorResponse("Membership not found")));
     }
 
+    /**
+     * Zwraca aktywny karnet zalogowanego użytkownika.
+     *
+     * @param authentication zalogowany użytkownik
+     * @return 200 z {@link Membership}, 401/404 gdy brak aktywnego karnetu
+     */
     @GetMapping("/me")
     public ResponseEntity<?> getMyActiveMembership(Authentication authentication) {
         var authEmail = authentication.getName();
@@ -71,7 +90,12 @@ public class MembershipController {
                         .body(new AuthErrorResponse("No active membership")));
     }
 
-    // 3. Tworzenie nowego karnetu
+    /**
+     * Tworzy nowy karnet i rejestruje płatność.
+     *
+     * @param request dane karnetu (userId, typ, daty, status)
+     * @return 201 z {@link Membership}, 400 przy błędach walidacji
+     */
     @PostMapping
     public ResponseEntity<?> createMembership(@RequestBody MembershipUpsertRequest request) {
         String validationError = validateRequest(request);
@@ -96,7 +120,13 @@ public class MembershipController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    // 4. Aktualizacja istniejącego karnetu
+    /**
+     * Aktualizuje istniejący karnet.
+     *
+     * @param id identyfikator karnetu
+     * @param request pola do aktualizacji
+     * @return 200 z {@link Membership}, 400/404 przy błędach
+     */
     @PutMapping("/{id}")
     public ResponseEntity<?> updateMembership(@PathVariable Integer id, @RequestBody MembershipUpsertRequest request) {
         return membershipRepository.findById(id)
@@ -113,7 +143,12 @@ public class MembershipController {
                         .body(new AuthErrorResponse("Membership not found")));
     }
 
-    // 5. Usuwanie karnetu
+    /**
+     * Usuwa karnet po ID.
+     *
+     * @param id identyfikator karnetu
+     * @return 204 po sukcesie, 404 gdy nie znaleziono
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteMembership(@PathVariable Integer id) {
         if (!membershipRepository.existsById(id)) {
@@ -123,7 +158,12 @@ public class MembershipController {
         return ResponseEntity.noContent().build();
     }
 
-    // 6. Kupno karnetu (płatność z salda użytkownika)
+    /**
+     * Kupuje karnet z salda użytkownika.
+     *
+     * @param request userId i membershipTypeId
+     * @return 201 z {@link Membership}, 400 przy braku środków, 404/409 przy błędach
+     */
     @PostMapping("/purchase")
     @Transactional
     public ResponseEntity<?> purchaseMembership(@RequestBody PurchaseMembershipRequest request) {
@@ -179,7 +219,12 @@ public class MembershipController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    // Metoda pomocnicza: Walidacja danych wejściowych
+    /**
+     * Waliduje dane karnetu przed zapisem.
+     *
+     * @param request dane karnetu
+     * @return komunikat błędu lub null gdy dane poprawne
+     */
     private String validateRequest(MembershipUpsertRequest request) {
         if (request == null
                 || request.getUserId() == null
@@ -201,7 +246,12 @@ public class MembershipController {
         return null;
     }
 
-    // Metoda pomocnicza: Mapowanie DTO -> Entity
+    /**
+     * Mapuje dane z żądania na encję karnetu.
+     *
+     * @param membership encja do uzupełnienia
+     * @param request dane z żądania
+     */
     private void fillMembership(Membership membership, MembershipUpsertRequest request) {
         membership.setUserId(request.getUserId());
         membership.setMembershipType(request.getMembershipType()); // Tutaj trafia nasz Enum

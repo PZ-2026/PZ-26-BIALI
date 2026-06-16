@@ -1,18 +1,17 @@
 package biali.fitmanager
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -22,29 +21,28 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import biali.fitmanager.network.ApiResult
 import biali.fitmanager.network.FitManagerRepository
+import biali.fitmanager.network.SessionManager
 import biali.fitmanager.pdf.ProgressReportGenerator
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -123,13 +121,23 @@ private fun formatDisplayDate(dateString: String?): String {
     return s
 }
 
+private fun logsInSameSession(log: ClientWorkoutDto, allLogs: List<ClientWorkoutDto>): List<ClientWorkoutDto> =
+    allLogs.filter {
+        it.exerciseName == log.exerciseName &&
+            ExerciseProgressMetrics.sessionGroupKey(it) == ExerciseProgressMetrics.sessionGroupKey(log)
+    }.sortedBy { it.sets }
+
+private fun availableSetNumbers(sessionLogs: List<ClientWorkoutDto>): List<Int> {
+    if (sessionLogs.isEmpty()) return listOf(1)
+    return (1..sessionLogs.size).toList()
+}
+
 class ProgressActivity : ComponentActivity() {
     private val viewModel: ProgressViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-
+        SessionManager.initialize(applicationContext)
         viewModel.fetchProgress()
 
         setContent {
@@ -212,177 +220,258 @@ fun ProgressScreen(
             )
         }
     ) { paddingValues ->
-      Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
-
-        // Sprawdzamy stan
-        when {
-            state.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF00E676))
-                }
-            }
-            state.error != null -> {
-                Text(text = "Błąd: ${state.error}", color = MaterialTheme.colorScheme.error)
-            }
-            else -> {
-                val workouts = state.myWorkouts
-                val groupedWorkouts = workouts.groupBy { it.exerciseName }
-                
-                val progressLogs = state.progressLogs
-                val latestLog = progressLogs.lastOrNull()
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Twoja waga", fontSize = 14.sp, color = Color.Gray)
-                            if (latestLog != null) {
-                                Text("${latestLog.weight} kg", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4A6B5D))
-                                Text("Ostatni pomiar: ${formatDisplayDate(latestLog.logDate)}", fontSize = 12.sp, color = Color.Gray)
-                            } else {
-                                Text("Brak pomiarów", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
-                            }
-                        }
-                        Button(
-                            onClick = { showWeightDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
-                        ) {
-                            Text("Zapisz wagę", color = Color.White)
-                        }
-                    }
-                    if (latestLog?.notes?.isNotBlank() == true) {
-                        HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
-                        Text(text = "Notatka trenera:\n${latestLog.notes}", fontSize = 13.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, modifier = Modifier.padding(16.dp))
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            when {
+                state.isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF00E676))
                     }
                 }
-                Spacer(modifier = Modifier.height(24.dp))
-
-                if (workouts.isEmpty()) {
-                    Text(
-                        text = "Nie ukończyłeś jeszcze żadnego zaleconego treningu od trenera.",
-                        color = Color.Gray,
-                        fontSize = 16.sp
-                    )
-                } else {
-                    Text(
-                        text = "Masz za sobą łącznie ${workouts.size} zapisanych aktywności!",
-                        color = Color.Gray,
-                        fontSize = 14.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "Analiza wyników",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF4A6B5D)
-                )
-
-                // Tabela (Nagłówki)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Nazwa ćwiczenia", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("Ciężar", fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.5f))
-                }
-
-                // Wiersze z ćwiczeniami
-                groupedWorkouts.forEach { (exerciseName, logs) ->
-                    val firstWeight = logs.first().weight
-                    val lastWeight = logs.last().weight
-
-                    Card(
+                state.error != null -> {
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { selectedExerciseName = exerciseName },
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = exerciseName, modifier = Modifier.weight(1f), color = Color.DarkGray, fontWeight = FontWeight.Medium)
-                            Text(
-                                text = "${firstWeight}kg -> ${lastWeight}kg",
-                                modifier = Modifier.weight(0.5f),
-                                color = Color.DarkGray,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Pokaż wykres",
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        Text(text = "Błąd: ${state.error}", color = MaterialTheme.colorScheme.error)
                     }
                 }
+                else -> {
+                    val workouts = state.myWorkouts
+                    val groupedWorkouts = workouts.groupBy { it.exerciseName }.toList()
+                    val progressLogs = state.progressLogs
+                    val latestLog = progressLogs.lastOrNull()
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Przycisk generowania raportu postępów - generuje PDF i otwiera natychmiast
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val repo = FitManagerRepository()
-                            when (val res = repo.getProgressSummary()) {
-                                is ApiResult.Success -> {
-                                    try {
-                                        val pdfFile = withContext(Dispatchers.IO) {
-                                            val file = java.io.File(context.cacheDir, "progress-report.pdf")
-                                            ProgressReportGenerator.writeTo(
-                                                file,
-                                                ProgressReportMapper.from(
-                                                    res.data,
-                                                    state.myWorkouts,
-                                                    state.progressLogs
-                                                )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Twoja waga", fontSize = 14.sp, color = Color.Gray)
+                                        if (latestLog != null) {
+                                            Text(
+                                                "${latestLog.weight} kg",
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF4A6B5D)
                                             )
-                                            file
+                                            Text(
+                                                "Ostatni pomiar: ${formatDisplayDate(latestLog.logDate)}",
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                        } else {
+                                            Text(
+                                                "Brak pomiarów",
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.DarkGray
+                                            )
                                         }
-                                        openPdfFile(context, pdfFile)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(
-                                            context,
-                                            "Błąd podczas generowania PDF: ${e.message}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                    }
+                                    Button(
+                                        onClick = { showWeightDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                                    ) {
+                                        Text("Zapisz wagę", color = Color.White)
                                     }
                                 }
-                                is ApiResult.Unauthorized -> {
-                                    Toast.makeText(context, "Sesja wygasła. Zaloguj się ponownie.", Toast.LENGTH_SHORT).show()
-                                }
-                                is ApiResult.Error -> {
-                                    Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+                                if (latestLog?.notes?.isNotBlank() == true) {
+                                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                                    Text(
+                                        text = "Notatka trenera:\n${latestLog.notes}",
+                                        fontSize = 13.sp,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
                                 }
                             }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6B5D))
-                ) {
-                    Text("Generuj raport postępów", color = Color.White)
-                }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+                        item {
+                            if (workouts.isEmpty()) {
+                                Text(
+                                    text = "Nie ukończyłeś jeszcze żadnego zaleconego treningu od trenera.",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                            } else {
+                                Text(
+                                    text = "Masz za sobą łącznie ${workouts.size} zapisanych aktywności!",
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
+
+                        item {
+                            Text(
+                                text = "Analiza wyników",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF4A6B5D)
+                            )
+                            Text(
+                                text = "Wykresy liczą objętość (kg × powt.) lub łączny czas trzymania",
+                                fontSize = 12.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            )
+                        }
+
+                        item {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        val repo = FitManagerRepository()
+                                        when (val res = repo.getProgressSummary()) {
+                                            is ApiResult.Success -> {
+                                                try {
+                                                    val pdfFile = withContext(Dispatchers.IO) {
+                                                        val file = java.io.File(context.cacheDir, "progress-report.pdf")
+                                                        ProgressReportGenerator.writeTo(
+                                                            file,
+                                                            ProgressReportMapper.from(
+                                                                res.data,
+                                                                state.myWorkouts,
+                                                                state.progressLogs
+                                                            )
+                                                        )
+                                                        file
+                                                    }
+                                                    openPdfFile(context, pdfFile)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Błąd podczas generowania PDF: ${e.message}",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            }
+                                            is ApiResult.Unauthorized -> {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Sesja wygasła. Zaloguj się ponownie.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                            is ApiResult.Error -> {
+                                                Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = workouts.isNotEmpty() || progressLogs.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6B5D))
+                            ) {
+                                Text("Generuj raport postępów", color = Color.White)
+                            }
+                        }
+
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+                        items(groupedWorkouts, key = { it.first }) { (exerciseName, _) ->
+                            val summary = ExerciseProgressMetrics.summaryForExercise(workouts, exerciseName)
+                            val maxLabel = ExerciseProgressMetrics.maxRecordLabel(exerciseName, summary.maxWeightEver)
+                            val volumeLabel = ExerciseProgressMetrics.formatVolumeLabel(exerciseName, summary.latestVolume)
+                            val trend = summary.trendPercent
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                                    .clickable { selectedExerciseName = exerciseName },
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = exerciseName,
+                                                color = Color(0xFF2E3D36),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp
+                                            )
+                                            if (maxLabel.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = maxLabel,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFF1E88E5)
+                                                )
+                                            }
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = volumeLabel,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF4A6B5D)
+                                            )
+                                            if (trend != null) {
+                                                val trendColor = if (trend >= 0) Color(0xFF00C853) else Color(0xFFE53935)
+                                                val sign = if (trend >= 0) "+" else ""
+                                                Text(
+                                                    text = "$sign${"%.0f".format(trend)}%",
+                                                    fontSize = 11.sp,
+                                                    color = trendColor,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        MiniProgressSparkline(
+                                            values = summary.chartValues,
+                                            isTimeBased = summary.isTimeBased,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = "Szczegóły",
+                                            tint = Color(0xFF00C853),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item { Spacer(modifier = Modifier.height(32.dp)) }
+                    }
+                }
             }
         }
-      }
 
         // Wyświetlanie oddzielnego okienka z wykresem po kliknięciu w ćwiczenie
         if (selectedExerciseName != null) {
@@ -394,7 +483,7 @@ fun ProgressScreen(
                     exerciseName = selectedExerciseName!!,
                     logs = logsForExercise,
                     onDismiss = { selectedExerciseName = null },
-                    onEditLog = { id, w, s, r -> viewModel.updateWorkout(id, w, s, r) },
+                    onEditLog = { id, w, s, r, swapId -> viewModel.updateWorkout(id, w, s, r, swapId) },
                     onDeleteLog = { viewModel.deleteWorkout(it) }
                 )
             }
@@ -402,23 +491,36 @@ fun ProgressScreen(
 
         if (showWeightDialog) {
             var weightStr by remember { mutableStateOf("") }
+            var weightError by remember { mutableStateOf<String?>(null) }
             AlertDialog(
                 onDismissRequest = { showWeightDialog = false },
                 title = { Text("Zapisz dzisiejszą wagę") },
                 text = {
-                    OutlinedTextField(
-                        value = weightStr, onValueChange = { weightStr = it },
-                        label = { Text("Waga (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = weightStr,
+                            onValueChange = {
+                                weightStr = it
+                                weightError = null
+                            },
+                            label = { Text("Waga (kg)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = weightError != null,
+                            supportingText = weightError?.let { msg -> { Text(msg, color = MaterialTheme.colorScheme.error) } }
+                        )
+                    }
                 },
                 confirmButton = {
                     Button(onClick = {
                         val w = weightStr.replace(",", ".").toDoubleOrNull()
-                        if (w != null) {
-                            viewModel.logWeight(w)
-                            showWeightDialog = false
+                        val validationError = InputValidator.validateWeight(w)
+                        if (validationError != null) {
+                            weightError = validationError
+                            return@Button
                         }
+                        viewModel.logWeight(w!!)
+                        showWeightDialog = false
                     }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))) { Text("Zapisz", color = Color.White) }
                 },
                 dismissButton = { TextButton(onClick = { showWeightDialog = false }) { Text("Anuluj", color = Color.Gray) } }
@@ -430,26 +532,21 @@ fun ProgressScreen(
 
 @Composable
 fun ExerciseProgressDialog(
-    exerciseName: String, 
-    logs: List<ClientWorkoutDto>, 
-    onDismiss: () -> Unit, 
-    onEditLog: (Int, Double, Int, Int) -> Unit,
+    exerciseName: String,
+    logs: List<ClientWorkoutDto>,
+    onDismiss: () -> Unit,
+    onEditLog: (Int, Double, Int, Int, Int?) -> Unit,
     onDeleteLog: (Int) -> Unit
 ) {
-    val startLog = logs.firstOrNull()
-    val endLog = logs.lastOrNull()
-    
-    val startWeight = startLog?.weight?.toFloat() ?: 0f
-    val startSets = startLog?.sets ?: 0
-    val startReps = startLog?.reps ?: 0
-    val endWeight = endLog?.weight?.toFloat() ?: 0f
-    val endSets = endLog?.sets ?: 0
-    val endReps = endLog?.reps ?: 0
-    val points = logs.map { it.weight.toFloat() }
+  val summary = ExerciseProgressMetrics.summaryForExercise(logs, exerciseName)
+  val snapshots = summary.snapshots
+  val startSnap = snapshots.firstOrNull()
+  val endSnap = snapshots.lastOrNull()
+  val chartValues = summary.chartValues
 
     var logToEdit by remember { mutableStateOf<ClientWorkoutDto?>(null) }
 
-    val isTimeBased = exerciseName.contains("Deska", ignoreCase = true) || exerciseName.contains("Plank", ignoreCase = true)
+    val isTimeBased = summary.isTimeBased
     val repsLabel = if (isTimeBased) "sek." else "powt."
 
     AlertDialog(
@@ -457,58 +554,174 @@ fun ExerciseProgressDialog(
         title = { Text("Progres: $exerciseName", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Początkowy wpis: $startWeight kg x $startReps $repsLabel (Seria $startSets)", fontSize = 14.sp)
-                Text("Obecny wpis: $endWeight kg x $endReps $repsLabel (Seria $endSets)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E676))
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Text("Wykres wzrostu siły", fontSize = 12.sp, color = Color.Gray)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Canvas(modifier = Modifier.fillMaxWidth().height(150.dp).padding(8.dp)) {
-                    val w = size.width
-                    val h = size.height
-                    val maxW = (points.maxOrNull() ?: 0f) + 5f
-                    val minW = ((points.minOrNull() ?: 0f) - 5f).coerceAtLeast(0f)
-                    val range = if (maxW == minW) 10f else (maxW - minW)
-                    val xStep = if (points.size <= 1) 0f else w / (points.size - 1)
-
-                    val path = Path()
-                    points.forEachIndexed { i, weight ->
-                        val x = i * xStep
-                        val y = h - ((weight - minW) / range) * h
-                        if (i == 0) {
-                            path.moveTo(x, y)
-                        } else {
-                            path.lineTo(x, y)
-                        }
-                        drawCircle(
-                            color = Color(0xFF00E676),
-                            radius = 6.dp.toPx(),
-                            center = Offset(x, y)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Rekord", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            ExerciseProgressMetrics.maxRecordLabel(exerciseName, summary.maxWeightEver),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFF1E88E5)
                         )
                     }
-                    drawPath(path = path, color = Color(0xFF00E676), style = Stroke(width = 3.dp.toPx()))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Najlepsza objętość", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            ExerciseProgressMetrics.formatVolumeLabel(exerciseName, summary.bestVolume),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFF00C853)
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (startSnap != null && endSnap != null) {
+                    Text(
+                        "Pierwszy trening: ${ExercisePlanHelper.formatDisplayDate(startSnap.date)} — ${ExerciseProgressMetrics.formatVolumeLabel(exerciseName, startSnap.volumeScore)}",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    Text(
+                        "Ostatni trening: ${ExercisePlanHelper.formatDisplayDate(endSnap.date)} — ${ExerciseProgressMetrics.formatVolumeLabel(exerciseName, endSnap.volumeScore)}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF4A6B5D)
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(ExerciseProgressMetrics.chartAxisLabel(exerciseName), fontSize = 12.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(8.dp))
+                ProgressStrengthChart(values = chartValues, isTimeBased = isTimeBased)
 
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Historia wpisów:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text("Historia treningów:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.heightIn(max = 120.dp)) {
-                    // Sortowanie po ID zapewni kolejność od najnowszych
-                    items(logs.sortedByDescending { it.id }) { log ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("• ${formatDisplayDate(log.date)} - Seria ${log.sets}: ${log.weight} kg x ${log.reps} $repsLabel", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                            Row {
-                                IconButton(onClick = { logToEdit = log }, modifier = Modifier.size(28.dp)) {
-                                    Icon(Icons.Filled.Edit, contentDescription = "Edytuj", tint = Color(0xFF1E88E5), modifier = Modifier.size(20.dp))
+
+                val sessionGroups = logs
+                    .groupBy { ExerciseProgressMetrics.sessionGroupKey(it) }
+                    .values
+                    .sortedByDescending { ExercisePlanHelper.formatDisplayDate(it.first().date) }
+
+                val dateCounts = sessionGroups.groupingBy {
+                    ExercisePlanHelper.formatDisplayDate(it.first().date)
+                }.eachCount()
+
+                fun sessionTitle(sessionLogs: List<ClientWorkoutDto>): String {
+                    val dateLabel = ExercisePlanHelper.formatDisplayDate(sessionLogs.first().date)
+                    return if ((dateCounts[dateLabel] ?: 1) > 1) {
+                        val sameDateGroups = sessionGroups.filter {
+                            ExercisePlanHelper.formatDisplayDate(it.first().date) == dateLabel
+                        }
+                        val order = sameDateGroups.indexOf(sessionLogs) + 1
+                        "Trening $order · $dateLabel"
+                    } else {
+                        "Trening · $dateLabel"
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    sessionGroups.forEach { sessionLogs ->
+                        val sessionTitle = sessionTitle(sessionLogs)
+                        val volumeSummary = ExerciseProgressMetrics.sessionVolumeLabel(exerciseName, sessionLogs)
+                        val sortedSets = sessionLogs.sortedBy { it.sets }
+
+                        item(key = "session_${ExerciseProgressMetrics.sessionGroupKey(sessionLogs.first())}") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFF3F7F5))
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = sessionTitle,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF4A6B5D)
+                                        )
+                                        Text(
+                                            text = "${sortedSets.size} ${ExercisePlanHelper.polishSeries(sortedSets.size)}",
+                                            fontSize = 11.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                    Surface(
+                                        color = Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = volumeSummary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                IconButton(onClick = { onDeleteLog(log.id) }, modifier = Modifier.size(28.dp)) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Usuń", tint = Color.Red, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = Color(0xFFDCE5E0))
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                sortedSets.forEach { log ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val setVol = if (isTimeBased) {
+                                            "${log.reps} sek."
+                                        } else if (log.weight > 0) {
+                                            "${ExercisePlanHelper.formatWeight(log.weight)} kg × ${log.reps} = ${ExerciseProgressMetrics.formatVolumeNumber(log.weight * log.reps)}"
+                                        } else {
+                                            "${log.reps} $repsLabel"
+                                        }
+                                        Text(
+                                            text = "Seria ${log.sets}: $setVol",
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.weight(1f),
+                                            color = Color(0xFF37474F)
+                                        )
+                                        Row {
+                                            IconButton(
+                                                onClick = { logToEdit = log },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Edit,
+                                                    contentDescription = "Edytuj",
+                                                    tint = Color(0xFF1E88E5),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { onDeleteLog(log.id) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Delete,
+                                                    contentDescription = "Usuń",
+                                                    tint = Color.Red,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -526,53 +739,141 @@ fun ExerciseProgressDialog(
     if (logToEdit != null) {
         EditWorkoutDialog(
             log = logToEdit!!,
+            exerciseName = exerciseName,
+            allExerciseLogs = logs,
             onDismiss = { logToEdit = null },
-            onSubmit = { w, s, r ->
-                onEditLog(logToEdit!!.id, w, s, r)
+            onSubmit = { w, s, r, swapId ->
+                onEditLog(logToEdit!!.id, w, s, r, swapId)
                 logToEdit = null
             }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditWorkoutDialog(
     log: ClientWorkoutDto,
+    exerciseName: String,
+    allExerciseLogs: List<ClientWorkoutDto>,
     onDismiss: () -> Unit,
-    onSubmit: (Double, Int, Int) -> Unit
+    onSubmit: (Double, Int, Int, swapWithId: Int?) -> Unit
 ) {
-    var weightStr by remember { mutableStateOf(log.weight.toString()) }
-    var setsStr by remember { mutableStateOf(log.sets.toString()) }
-    var repsStr by remember { mutableStateOf(log.reps.toString()) }
+    val isTimeBased = ExercisePlanHelper.isTimeBased(exerciseName)
+    val sessionLogs = logsInSameSession(log, allExerciseLogs)
+    val setOptions = availableSetNumbers(sessionLogs)
+    val initialSet = if (log.sets in setOptions) log.sets else setOptions.firstOrNull() ?: 1
+
+    var weightStr by remember(log.id) { mutableStateOf(log.weight.toString()) }
+    var selectedSet by remember(log.id) { mutableStateOf(initialSet) }
+    var repsStr by remember(log.id) { mutableStateOf(log.reps.toString()) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    var setMenuExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edytuj wynik") },
+        title = { Text("Edytuj wynik — $exerciseName") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = weightStr, onValueChange = { weightStr = it },
-                    label = { Text("Ciężar (kg)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Trening z ${formatDisplayDate(log.date)} · ${sessionLogs.size} ${ExercisePlanHelper.polishSeries(sessionLogs.size)}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
                 )
+                if (selectedSet != log.sets) {
+                    val swapTarget = sessionLogs.find { it.id != log.id && it.sets == selectedSet }
+                    if (swapTarget != null) {
+                        Text(
+                            text = "Serie $selectedSet i ${log.sets} zostaną zamienione miejscami.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF1E88E5)
+                        )
+                    }
+                }
+
+                ExposedDropdownMenuBox(
+                    expanded = setMenuExpanded,
+                    onExpandedChange = { setMenuExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = "Seria $selectedSet",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Numer serii") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = setMenuExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = setMenuExpanded,
+                        onDismissRequest = { setMenuExpanded = false }
+                    ) {
+                        setOptions.forEach { setNum ->
+                            DropdownMenuItem(
+                                text = { Text("Seria $setNum") },
+                                onClick = {
+                                    selectedSet = setNum
+                                    setMenuExpanded = false
+                                    validationError = null
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (!isTimeBased) {
+                    OutlinedTextField(
+                        value = weightStr,
+                        onValueChange = {
+                            weightStr = it
+                            validationError = null
+                        },
+                        label = { Text("Ciężar (kg)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = validationError != null
+                    )
+                }
+
                 OutlinedTextField(
-                    value = setsStr, onValueChange = { setsStr = it },
-                    label = { Text("Serie") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    value = repsStr,
+                    onValueChange = {
+                        repsStr = it
+                        validationError = null
+                    },
+                    label = { Text(if (isTimeBased) "Czas (sek.)" else "Powtórzenia") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = validationError != null
                 )
-                OutlinedTextField(
-                    value = repsStr, onValueChange = { repsStr = it },
-                    label = { Text("Powtórzenia") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
+
+                validationError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val w = weightStr.replace(",", ".").toDoubleOrNull()
-                val s = setsStr.toIntOrNull()
-                val r = repsStr.toIntOrNull()
-                if (w != null && s != null && r != null) {
-                    onSubmit(w, s, r)
-                }
-            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))) { Text("Zapisz", color = Color.White) }
+            Button(
+                onClick = {
+                    val w = if (isTimeBased) 0.0 else weightStr.replace(",", ".").toDoubleOrNull()
+                    val r = repsStr.toIntOrNull()
+                    if (!isTimeBased) {
+                        val weightValidationError = InputValidator.validateWeight(w)
+                        if (weightValidationError != null) {
+                            validationError = weightValidationError
+                            return@Button
+                        }
+                    }
+                    if (r == null || r <= 0) {
+                        validationError = if (isTimeBased) "Podaj poprawny czas w sekundach." else "Podaj poprawną liczbę powtórzeń."
+                        return@Button
+                    }
+                    val swapTarget = if (selectedSet != log.sets) {
+                        sessionLogs.find { it.id != log.id && it.sets == selectedSet }
+                    } else {
+                        null
+                    }
+                    onSubmit(w ?: 0.0, selectedSet, r, swapTarget?.id)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+            ) { Text("Zapisz", color = Color.White) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )

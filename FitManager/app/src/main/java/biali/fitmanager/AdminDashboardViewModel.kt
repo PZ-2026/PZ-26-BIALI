@@ -7,6 +7,7 @@ import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.MembershipTypeUpsertRequest
 import biali.fitmanager.network.UserResponse
 import biali.fitmanager.network.UserUpsertRequest
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -44,7 +45,9 @@ data class AdminDashboardUiState(
     val clientIdForAssignment: String = "",
     val form: AdminUserFormState = AdminUserFormState(),
     val membershipTypes: List<biali.fitmanager.network.MembershipTypeResponse> = emptyList(),
-    val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState()
+    val membershipTypeForm: AdminMembershipTypeFormState = AdminMembershipTypeFormState(),
+    val chartData: biali.fitmanager.network.ChartDataResponse? = null,
+    val isChartLoading: Boolean = false
 )
 
 class AdminDashboardViewModel : ViewModel() {
@@ -62,7 +65,24 @@ class AdminDashboardViewModel : ViewModel() {
             loadUsersInternal(_state.value.selectedUserRoleFilter)
             loadTrainersInternal()
             loadMembershipTypesInternal()
+            loadChartDataInternal()
             _state.update { it.copy(isLoading = false) }
+        }
+    }
+
+    private fun loadChartDataInternal() {
+        viewModelScope.launch {
+            _state.update { it.copy(isChartLoading = true) }
+            when (val result = repository.getChartData()) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(chartData = result.data, isChartLoading = false) }
+                }
+                is ApiResult.Unauthorized -> _state.update { it.copy(sessionExpired = true, isChartLoading = false) }
+                is ApiResult.Error -> {
+                    // Silently fail for charts, don't show error
+                    _state.update { it.copy(chartData = null, isChartLoading = false) }
+                }
+            }
         }
     }
 
@@ -147,6 +167,21 @@ class AdminDashboardViewModel : ViewModel() {
 
     fun saveForm() {
         val form = _state.value.form
+        val id = form.id.toIntOrNull()
+        val validationError = InputValidator.validateAdminUserForm(
+            email = form.email.trim(),
+            password = form.password.ifBlank { null },
+            role = form.role.trim().uppercase(),
+            firstName = form.firstName.trim(),
+            lastName = form.lastName.trim(),
+            phone = form.phoneNumber.trim().ifBlank { null },
+            isCreate = id == null
+        )
+        if (validationError != null) {
+            _state.update { it.copy(error = validationError, message = null) }
+            return
+        }
+
         val request = UserUpsertRequest(
             email = form.email.trim(),
             password = form.password.ifBlank { null },
@@ -155,7 +190,6 @@ class AdminDashboardViewModel : ViewModel() {
             lastName = form.lastName.trim(),
             phoneNumber = form.phoneNumber.trim().ifBlank { null }
         )
-        val id = form.id.toIntOrNull()
 
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, message = null) }
@@ -175,10 +209,22 @@ class AdminDashboardViewModel : ViewModel() {
 
     fun saveMembershipTypeForm() {
         val form = _state.value.membershipTypeForm
+        val validationError = InputValidator.validateMembershipTypeForm(
+            name = form.name.trim(),
+            priceText = form.price.trim(),
+            durationDaysText = form.durationDays.trim()
+        )
+        if (validationError != null) {
+            _state.update { it.copy(error = validationError, message = null) }
+            return
+        }
+
+        val price = form.price.replace(',', '.').toDoubleOrNull() ?: 0.0
+        val durationDays = form.durationDays.toIntOrNull() ?: 1
         val request = MembershipTypeUpsertRequest(
             name = form.name.trim(),
-            price = form.price.toDoubleOrNull() ?: 0.0,
-            durationDays = form.durationDays.toIntOrNull() ?: 1,
+            price = price,
+            durationDays = durationDays,
             description = form.description.trim().ifBlank { null }
         )
         val id = form.id.toIntOrNull()

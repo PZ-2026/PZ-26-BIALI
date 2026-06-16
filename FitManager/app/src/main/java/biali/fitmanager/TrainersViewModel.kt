@@ -12,6 +12,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import biali.fitmanager.network.SessionManager
+import biali.fitmanager.network.CompleteSessionRequest
+import biali.fitmanager.network.SetLogDto
+
+data class WorkoutResultDraft(
+    val exerciseId: Int,
+    val exerciseName: String,
+    val sets: Int,
+    val reps: Int,
+    val weight: Double
+)
 
 data class TrainersUiState(
     val trainers: List<UserResponse> = emptyList(),
@@ -179,5 +189,32 @@ class TrainersViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    fun saveWorkoutResults(sessionId: Int, results: List<WorkoutResultDraft>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null, actionSuccess = null) }
+
+            val logs = mutableListOf<SetLogDto>()
+            for (draft in results) {
+                for (i in 1..draft.sets) {
+                    logs.add(SetLogDto(draft.exerciseId, i, draft.weight, draft.reps))
+                }
+            }
+            val request = CompleteSessionRequest(logs)
+
+            when (val apiResult = repository.completeSession(sessionId, request)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(actionSuccess = "Wyniki treningu zostały zapisane!", isLoading = false) }
+                    fetchTrainers()
+                }
+                is ApiResult.Error -> _state.update { it.copy(error = apiResult.message, isLoading = false) }
+                else -> _state.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun clearActionSuccess() {
+        _state.update { it.copy(actionSuccess = null) }
     }
 }

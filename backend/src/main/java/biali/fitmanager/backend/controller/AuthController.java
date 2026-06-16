@@ -15,7 +15,11 @@ import biali.fitmanager.backend.dto.RegisterRequest;
 import biali.fitmanager.backend.model.AppUser;
 import biali.fitmanager.backend.repository.AppUserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import biali.fitmanager.backend.validation.InputValidator;
 
+/**
+ * Endpointy rejestracji i logowania użytkowników.
+ */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -33,8 +37,19 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
     }
 
+    /**
+     * Logowanie użytkownika na podstawie emaila i hasła.
+     *
+     * @param loginRequest dane logowania (email, password)
+     * @return 200 z {@link LoginResponse} (token JWT), 400 z {@link AuthErrorResponse}, 401 przy błędnych danych
+     */
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+        String validationError = InputValidator.validateLogin(loginRequest);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
+        }
+
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
@@ -51,14 +66,17 @@ public class AuthController {
         }
     }
 
+    /**
+     * Rejestracja nowego klienta i automatyczne logowanie.
+     *
+     * @param request dane rejestracyjne (email, hasło, imię, nazwisko, telefon)
+     * @return 201 z {@link LoginResponse} (token JWT), 400 przy błędach walidacji, 409 gdy email już istnieje
+     */
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        if (request == null
-                || request.getEmail() == null || request.getEmail().isBlank()
-                || request.getPassword() == null || request.getPassword().isBlank()
-                || request.getFirstName() == null || request.getFirstName().isBlank()
-                || request.getLastName() == null || request.getLastName().isBlank()) {
-            return ResponseEntity.badRequest().body(new AuthErrorResponse("Invalid registration payload"));
+        String validationError = InputValidator.validateRegister(request);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
         }
 
         String email = request.getEmail().trim().toLowerCase();

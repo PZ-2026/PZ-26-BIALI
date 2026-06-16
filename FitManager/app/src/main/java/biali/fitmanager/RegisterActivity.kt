@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.RegisterRequest
 import biali.fitmanager.network.SessionManager
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.launch
 
 class RegisterActivity : AppCompatActivity() {
@@ -34,10 +35,17 @@ class RegisterActivity : AppCompatActivity() {
             val lastName = etLastName.text.toString().trim()
             val phone = etPhone.text.toString().trim()
             val email = etEmail.text.toString().trim()
-            val password = etPassword.text.toString().trim()
+            val password = etPassword.text.toString()
 
-            if (firstName.isEmpty() || lastName.isEmpty() || email.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Wypełnij wszystkie wymagane pola", Toast.LENGTH_SHORT).show()
+            val validationError = InputValidator.validateRegister(
+                firstName = firstName,
+                lastName = lastName,
+                email = email,
+                password = password,
+                phone = phone.ifBlank { null }
+            )
+            if (validationError != null) {
+                Toast.makeText(this, validationError, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
@@ -93,11 +101,12 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        val intent = Intent(this, targetActivity)
+        val intent = Intent(this, targetActivity).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
         email?.let { intent.putExtra("USER_EMAIL", it) }
         intent.putExtra("USER_ROLE", role)
         startActivity(intent)
-        finish()
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -8,6 +8,7 @@ import biali.fitmanager.network.ProgressSummaryResponse
 import biali.fitmanager.ClientWorkoutDto
 import biali.fitmanager.network.ClientProgressLogDto
 import biali.fitmanager.network.LogWeightRequest
+import biali.fitmanager.validation.InputValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,10 +79,33 @@ class ProgressViewModel : ViewModel() {
         }
     }
 
-    fun updateWorkout(id: Int, weight: Double, sets: Int, reps: Int) {
+    fun updateWorkout(id: Int, weight: Double, sets: Int, reps: Int, swapWithId: Int? = null) {
+        if (weight > 0) {
+            InputValidator.validateWeight(weight)?.let { error ->
+                _state.update { it.copy(error = error) }
+                return
+            }
+        }
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val request = LogWorkoutRequest(0, weight, sets, reps, null) // exerciseId and sessionId are ignored in backend update query
+
+            val currentLog = _state.value.myWorkouts.find { it.id == id }
+            if (swapWithId != null && currentLog != null) {
+                val otherLog = _state.value.myWorkouts.find { it.id == swapWithId }
+                if (otherLog != null) {
+                    val swapRequest = LogWorkoutRequest(0, otherLog.weight, currentLog.sets, otherLog.reps, null)
+                    when (val swapResult = repository.updateClientWorkout(swapWithId, swapRequest)) {
+                        is ApiResult.Error -> {
+                            _state.update { it.copy(error = swapResult.message, isLoading = false) }
+                            return@launch
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+
+            val request = LogWorkoutRequest(0, weight, sets, reps, null)
             when (val result = repository.updateClientWorkout(id, request)) {
                 is ApiResult.Success -> fetchProgress()
                 is ApiResult.Error -> _state.update { it.copy(error = result.message, isLoading = false) }
@@ -91,6 +115,11 @@ class ProgressViewModel : ViewModel() {
     }
 
     fun logWeight(weight: Double) {
+        InputValidator.validateWeight(weight)?.let { error ->
+            _state.update { it.copy(error = error) }
+            return
+        }
+
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             when (val result = repository.addClientProgressLog(LogWeightRequest(weight))) {

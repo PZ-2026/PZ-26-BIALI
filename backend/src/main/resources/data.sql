@@ -57,8 +57,8 @@ INSERT INTO training_sessions (trainer_id, title, start_time, end_time, max_part
 VALUES (
     2,
     'Trening Siłowy - Nogi',
-    CURRENT_TIMESTAMP + INTERVAL '1 day',
-    CURRENT_TIMESTAMP + INTERVAL '1 day 1 hour',
+    CURRENT_TIMESTAMP + INTERVAL '1 hour',
+    CURRENT_TIMESTAMP + INTERVAL '2 hours',
     1
 );
 

@@ -13,7 +13,11 @@ import biali.fitmanager.backend.dto.AuthErrorResponse;
 import biali.fitmanager.backend.dto.MeResponse;
 import biali.fitmanager.backend.model.AppUser;
 import biali.fitmanager.backend.repository.AppUserRepository;
+import biali.fitmanager.backend.validation.InputValidator;
 
+/**
+ * Profil zalogowanego użytkownika i zmiana hasła.
+ */
 @RestController
 public class ProfileController {
 
@@ -29,6 +33,12 @@ public class ProfileController {
         this.passwordEncoder = passwordEncoder;
     }
 
+    /**
+     * Pobiera dane aktualnie zalogowanego użytkownika.
+     *
+     * @param authentication token JWT zalogowanego użytkownika
+     * @return 200 z {@link MeResponse} (id, email, rola, saldo, aktywny trener), 404 gdy użytkownik nie istnieje
+     */
     @GetMapping("/api/me")
     public ResponseEntity<?> getCurrentUser(Authentication authentication) {
         String email = authentication.getName();
@@ -63,10 +73,21 @@ public class ProfileController {
         ));
     }
 
+    /**
+     * Zmienia hasło zalogowanego użytkownika.
+     *
+     * @param authentication token JWT zalogowanego użytkownika
+     * @param request aktualne i nowe hasło
+     * @return 200 po sukcesie, 400 przy błędnej walidacji lub złym obecnym haśle, 404 gdy użytkownik nie istnieje
+     */
     @PostMapping("/api/me/password")
     public ResponseEntity<?> changePassword(Authentication authentication, @RequestBody ChangePasswordRequest request) {
-        if (request == null || isBlank(request.currentPassword()) || isBlank(request.newPassword())) {
-            return ResponseEntity.badRequest().body(new AuthErrorResponse("Invalid password payload"));
+        String validationError = InputValidator.validatePasswordChange(
+                request == null ? null : request.currentPassword(),
+                request == null ? null : request.newPassword()
+        );
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
         }
 
         AppUser user = appUserRepository.findByEmail(authentication.getName()).orElse(null);
@@ -83,12 +104,14 @@ public class ProfileController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Zwraca pusty ciąg zamiast null.
+     *
+     * @param value tekst do zabezpieczenia
+     * @return wartość lub pusty ciąg
+     */
     private String safe(String value) {
         return value == null ? "" : value;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 
     public record ChangePasswordRequest(String currentPassword, String newPassword) {}

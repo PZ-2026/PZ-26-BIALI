@@ -8,11 +8,18 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
 
+/**
+ * Podsumowanie postępów treningowych (dane dla aplikacji mobilnej).
+ */
 @RestController
 @RequestMapping("/api/progress")
 public class ProgressController {
 
-    // Ten endpoint wywoła aplikacja mobilna, żeby pobrać postępy
+    /**
+     * Zwraca podsumowanie postępów użytkownika z danymi do wykresów.
+     *
+     * @return 200 z {@link ProgressSummaryResponse} (daysSinceFirstTraining, dateRange, progressList, chartData)
+     */
     @GetMapping("/summary")
     public ResponseEntity<ProgressSummaryResponse> getProgressSummary() {
         

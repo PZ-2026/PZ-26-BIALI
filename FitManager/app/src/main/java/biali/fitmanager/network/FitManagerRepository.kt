@@ -135,12 +135,16 @@ class FitManagerRepository(
         return executeVoidCall { api.updateProgressNote(id, request) }
     }
 
-    suspend fun addTrainerSession(request: biali.fitmanager.CreateSessionRequest): ApiResult<Unit> {
-        return executeVoidCall { api.addTrainerSession(request) }
+    suspend fun addTrainerSession(request: biali.fitmanager.CreateSessionRequest): ApiResult<CreateSessionResponse> {
+        return executeBodyCall { api.addTrainerSession(request) }
     }
 
     suspend fun sendSessionToClient(sessionId: Int): ApiResult<Unit> {
         return executeVoidCall { api.sendSessionToClient(sessionId) }
+    }
+
+    suspend fun updateTrainerSession(sessionId: Int, request: biali.fitmanager.UpdateSessionRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateTrainerSession(sessionId, request) }
     }
 
     suspend fun deleteTrainerSession(sessionId: Int): ApiResult<Unit> {
@@ -157,6 +161,10 @@ class FitManagerRepository(
 
     suspend fun addSessionExercise(sessionId: Int, request: AddSessionExerciseRequest): ApiResult<Unit> {
         return executeVoidCall { api.addSessionExercise(sessionId, request) }
+    }
+
+    suspend fun updateSessionExercise(id: Int, request: biali.fitmanager.UpdateSessionExerciseRequest): ApiResult<Unit> {
+        return executeVoidCall { api.updateSessionExercise(id, request) }
     }
 
     suspend fun deleteSessionExercise(id: Int): ApiResult<Unit> {
@@ -206,6 +214,9 @@ class FitManagerRepository(
     suspend fun completeSession(sessionId: Int, request: CompleteSessionRequest): ApiResult<Unit> {
         return executeVoidCall { api.completeSession(sessionId, request) }
     }
+
+    suspend fun getChartData(): ApiResult<ChartDataResponse> =
+        executeBodyCall { api.getChartData() }
 
     private suspend fun <T> executeBodyCall(call: suspend () -> Response<T>): ApiResult<T> {
         return safeCall {
@@ -276,17 +287,27 @@ class FitManagerRepository(
         val raw = runCatching { response.errorBody()?.string().orEmpty() }.getOrDefault("")
         if (raw.isBlank()) return null
 
-        // try JSON {"message":"..."}; if backend returns plain text/HTML, show raw body
         val parsed = runCatching { gson.fromJson(raw, ErrorResponse::class.java)?.message }.getOrNull()
-        return parsed?.takeIf { it.isNotBlank() } ?: raw
+        if (!parsed.isNullOrBlank()) return parsed
+
+        val springError = runCatching {
+            gson.fromJson(raw, SpringErrorBody::class.java)
+        }.getOrNull()
+        if (!springError?.error.isNullOrBlank()) {
+            return defaultErrorMessage(springError?.status ?: response.code())
+        }
+
+        return raw.takeIf { it.length < 120 }
     }
+
+    private data class SpringErrorBody(val status: Int? = null, val error: String? = null, val message: String? = null)
 
     private fun defaultErrorMessage(code: Int): String = when (code) {
         400 -> "Niepoprawne dane wejściowe."
         401 -> "Brak autoryzacji."
         403 -> "Brak uprawnień."
         404 -> "Nie znaleziono zasobu."
-        405 -> "Niedozwolona metoda HTTP (405). Sprawdź endpoint zakupu i metodę POST."
+        405 -> "Serwer nie obsługuje tej operacji. Zaktualizuj backend: docker compose up -d --build"
         409 -> "Konflikt danych."
         else -> "Wystąpił błąd serwera ($code)."
     }

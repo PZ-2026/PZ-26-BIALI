@@ -23,7 +23,11 @@ import biali.fitmanager.backend.repository.PaymentRepository;
 import biali.fitmanager.backend.model.TrainerClient;
 import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.TrainerClientRepository;
+import biali.fitmanager.backend.validation.InputValidator;
 
+/**
+ * Panel administracyjny: użytkownicy, trenerzy, raporty i przychody.
+ */
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
@@ -49,6 +53,12 @@ public class AdminController {
         this.paymentRepository = paymentRepository;
     }
 
+    /**
+     * Zwraca listę użytkowników, opcjonalnie filtrowaną po roli.
+     *
+     * @param role opcjonalny filtr: ADMIN, TRAINER lub CLIENT
+     * @return lista {@link UserResponse}
+     */
     @GetMapping("/users")
     public List<UserResponse> getUsers(@RequestParam(required = false) String role) {
         if (role != null && !role.isBlank()) {
@@ -57,10 +67,17 @@ public class AdminController {
         return appUserRepository.findAll().stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Tworzy nowego użytkownika.
+     *
+     * @param request dane użytkownika (email, hasło, rola, imię, nazwisko)
+     * @return 201 z {@link UserResponse}, 400 przy błędach walidacji, 409 gdy email już istnieje
+     */
     @PostMapping("/users")
     public ResponseEntity<?> createUser(@RequestBody UserUpsertRequest request) {
-        if (!isValidForCreate(request)) {
-            return ResponseEntity.badRequest().body(new AuthErrorResponse("Invalid user payload"));
+        String validationError = InputValidator.validateUserCreate(request);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
         }
         if (appUserRepository.existsByEmail(request.getEmail().trim().toLowerCase())) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new AuthErrorResponse("Email already exists"));
@@ -72,8 +89,20 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(saved));
     }
 
+    /**
+     * Aktualizuje istniejącego użytkownika.
+     *
+     * @param id identyfikator użytkownika
+     * @param request pola do aktualizacji
+     * @return 200 z {@link UserResponse}, 400/404/409 przy błędach
+     */
     @PutMapping("/users/{id}")
     public ResponseEntity<?> updateUser(@PathVariable Integer id, @RequestBody UserUpsertRequest request) {
+        String validationError = InputValidator.validateUserUpdate(request);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
+        }
+
         return appUserRepository.findById(id)
                 .<ResponseEntity<?>>map(existing -> {
                     if (request.getEmail() != null
@@ -89,6 +118,12 @@ public class AdminController {
                         .body(new AuthErrorResponse("User not found")));
     }
 
+    /**
+     * Usuwa użytkownika po ID.
+     *
+     * @param id identyfikator użytkownika
+     * @return 204 po sukcesie, 404 gdy użytkownik nie istnieje
+     */
     @DeleteMapping("/users/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable Integer id) {
         if (!appUserRepository.existsById(id)) {
@@ -98,17 +133,35 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Zwraca listę wszystkich trenerów.
+     *
+     * @return lista {@link UserResponse} z rolą TRAINER
+     */
     @GetMapping("/trainers")
     public List<UserResponse> getTrainers() {
         return appUserRepository.findAllByRole(ROLE_TRAINER).stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Tworzy nowego trenera (wymusza rolę TRAINER).
+     *
+     * @param request dane trenera
+     * @return 201 z {@link UserResponse}, 400/409 przy błędach
+     */
     @PostMapping("/trainers")
     public ResponseEntity<?> createTrainer(@RequestBody UserUpsertRequest request) {
         request.setRole(ROLE_TRAINER);
         return createUser(request);
     }
 
+    /**
+     * Aktualizuje dane trenera.
+     *
+     * @param id identyfikator trenera
+     * @param request pola do aktualizacji
+     * @return 200 z {@link UserResponse}, 404 gdy trener nie istnieje, 409 przy konflikcie emaila
+     */
     @PutMapping("/trainers/{id}")
     public ResponseEntity<?> updateTrainer(@PathVariable Integer id, @RequestBody UserUpsertRequest request) {
         return appUserRepository.findByIdAndRole(id, ROLE_TRAINER)
@@ -129,6 +182,12 @@ public class AdminController {
                         .body(new AuthErrorResponse("Trainer not found")));
     }
 
+    /**
+     * Usuwa trenera po ID.
+     *
+     * @param id identyfikator trenera
+     * @return 204 po sukcesie, 404 gdy trener nie istnieje
+     */
     @DeleteMapping("/trainers/{id}")
     public ResponseEntity<?> deleteTrainer(@PathVariable Integer id) {
         if (!appUserRepository.existsByIdAndRole(id, ROLE_TRAINER)) {
@@ -138,6 +197,12 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Zwraca klientów przypisanych do trenera.
+     *
+     * @param trainerId identyfikator trenera
+     * @return 200 z listą {@link UserResponse}, 404 gdy trener nie istnieje
+     */
     @GetMapping("/trainers/{trainerId}/clients")
     public ResponseEntity<?> getTrainerClients(@PathVariable Integer trainerId) {
         if (!appUserRepository.existsByIdAndRole(trainerId, ROLE_TRAINER)) {
@@ -158,12 +223,23 @@ public class AdminController {
         return ResponseEntity.ok(clients);
     }
 
+    /**
+     * Zwraca łączny przychód z udanych płatności za karnety.
+     *
+     * @return suma przychodów (Double, 0.0 gdy brak płatności)
+     */
     @GetMapping("/revenue/memberships")
     public ResponseEntity<Double> getMembershipRevenue() {
         var total = paymentRepository.sumSuccessfulMembershipRevenue();
         return ResponseEntity.ok(total == null ? 0.0 : total.doubleValue());
     }
 
+    /**
+     * Generuje raport PDF z listą użytkowników.
+     *
+     * @param authentication zalogowany admin (używany jako autor raportu)
+     * @return 200 z plikiem PDF (application/pdf)
+     */
     @GetMapping(value = "/reports/users/pdf", produces = "application/pdf")
     public ResponseEntity<byte[]> usersReport(org.springframework.security.core.Authentication authentication) {
         String generatedBy = authentication == null ? null : authentication.getName();
@@ -174,6 +250,13 @@ public class AdminController {
         return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 
+    /**
+     * Przypisuje klienta do trenera.
+     *
+     * @param trainerId identyfikator trenera
+     * @param clientId identyfikator klienta
+     * @return 201 po sukcesie, 404 gdy trener/klient nie istnieje, 409 gdy relacja już istnieje
+     */
     @PostMapping("/trainers/{trainerId}/clients/{clientId}")
     public ResponseEntity<?> assignClientToTrainer(@PathVariable Integer trainerId, @PathVariable Integer clientId) {
         if (!appUserRepository.existsByIdAndRole(trainerId, ROLE_TRAINER)) {
@@ -194,6 +277,13 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    /**
+     * Usuwa przypisanie klienta do trenera.
+     *
+     * @param trainerId identyfikator trenera
+     * @param clientId identyfikator klienta
+     * @return 204 po sukcesie, 404 gdy relacja nie istnieje
+     */
     @DeleteMapping("/trainers/{trainerId}/clients/{clientId}")
     public ResponseEntity<?> unassignClientFromTrainer(@PathVariable Integer trainerId, @PathVariable Integer clientId) {
         if (!trainerClientRepository.existsByTrainerIdAndClientId(trainerId, clientId)) {
@@ -205,6 +295,13 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Kopiuje pola z żądania do encji użytkownika.
+     *
+     * @param user encja do uzupełnienia
+     * @param request dane z żądania
+     * @param createMode true przy tworzeniu (ustawia domyślną rolę CLIENT)
+     */
     private void applyCommonFields(AppUser user, UserUpsertRequest request, boolean createMode) {
         if (request.getEmail() != null) {
             user.setEmail(request.getEmail().trim().toLowerCase());
@@ -230,14 +327,12 @@ public class AdminController {
         }
     }
 
-    private boolean isValidForCreate(UserUpsertRequest request) {
-        return request != null
-                && request.getEmail() != null && !request.getEmail().isBlank()
-                && request.getPassword() != null && !request.getPassword().isBlank()
-                && request.getFirstName() != null && !request.getFirstName().isBlank()
-                && request.getLastName() != null && !request.getLastName().isBlank();
-    }
-
+    /**
+     * Mapuje encję użytkownika na DTO odpowiedzi.
+     *
+     * @param user encja AppUser
+     * @return {@link UserResponse}
+     */
     private UserResponse toResponse(AppUser user) {
         return new UserResponse(
                 user.getId(),

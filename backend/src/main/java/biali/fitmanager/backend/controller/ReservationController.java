@@ -21,6 +21,9 @@ import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.ReservationRepository;
 import biali.fitmanager.backend.repository.TrainingSessionRepository;
 
+/**
+ * Zarządzanie rezerwacjami sesji treningowych.
+ */
 @RestController
 @RequestMapping("/api/reservations")
 public class ReservationController {
@@ -37,6 +40,13 @@ public class ReservationController {
         this.trainingSessionRepository = trainingSessionRepository;
     }
 
+    /**
+     * Zwraca rezerwacje, opcjonalnie filtrowane po użytkowniku lub sesji.
+     *
+     * @param userId opcjonalny filtr po ID użytkownika
+     * @param sessionId opcjonalny filtr po ID sesji
+     * @return lista {@link Reservation}
+     */
     @GetMapping
     public List<Reservation> getReservations(@RequestParam(required = false) Integer userId,
                                              @RequestParam(required = false) Integer sessionId) {
@@ -49,6 +59,12 @@ public class ReservationController {
         return reservationRepository.findAll();
     }
 
+    /**
+     * Zwraca rezerwację po ID.
+     *
+     * @param id identyfikator rezerwacji
+     * @return 200 z {@link Reservation}, 404 gdy nie znaleziono
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getReservation(@PathVariable Integer id) {
         return reservationRepository.findById(id)
@@ -57,6 +73,12 @@ public class ReservationController {
                         .body(new AuthErrorResponse("Reservation not found")));
     }
 
+    /**
+     * Tworzy nową rezerwację sesji.
+     *
+     * @param request userId, sessionId, status
+     * @return 201 z {@link Reservation}, 400 przy błędach walidacji
+     */
     @PostMapping
     public ResponseEntity<?> createReservation(@RequestBody ReservationUpsertRequest request) {
         String validationError = validateRequest(request, true);
@@ -70,6 +92,13 @@ public class ReservationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
+    /**
+     * Aktualizuje istniejącą rezerwację.
+     *
+     * @param id identyfikator rezerwacji
+     * @param request pola do aktualizacji
+     * @return 200 z {@link Reservation}, 400/404 przy błędach
+     */
     @PutMapping("/{id}")
     public ResponseEntity<?> updateReservation(@PathVariable Integer id, @RequestBody ReservationUpsertRequest request) {
         return reservationRepository.findById(id)
@@ -86,6 +115,12 @@ public class ReservationController {
                         .body(new AuthErrorResponse("Reservation not found")));
     }
 
+    /**
+     * Usuwa rezerwację po ID.
+     *
+     * @param id identyfikator rezerwacji
+     * @return 204 po sukcesie, 404 gdy nie znaleziono
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteReservation(@PathVariable Integer id) {
         if (!reservationRepository.existsById(id)) {
@@ -95,6 +130,13 @@ public class ReservationController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Waliduje dane rezerwacji przed zapisem.
+     *
+     * @param request dane rezerwacji
+     * @param checkUniqueness true przy tworzeniu (sprawdza duplikat user+session)
+     * @return komunikat błędu lub null gdy dane poprawne
+     */
     private String validateRequest(ReservationUpsertRequest request, boolean checkUniqueness) {
         if (request == null
                 || request.getUserId() == null
@@ -118,6 +160,12 @@ public class ReservationController {
         return null;
     }
 
+    /**
+     * Mapuje dane z żądania na encję rezerwacji.
+     *
+     * @param reservation encja do uzupełnienia
+     * @param request dane z żądania
+     */
     private void fillReservation(Reservation reservation, ReservationUpsertRequest request) {
         reservation.setUserId(request.getUserId());
         reservation.setSessionId(request.getSessionId());

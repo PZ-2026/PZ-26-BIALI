@@ -4,9 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import biali.fitmanager.backend.dto.AuthErrorResponse;
+import biali.fitmanager.backend.validation.InputValidator;
 import java.security.Principal;
 import java.util.List;
 
+/**
+ * Panel klienta: ćwiczenia, treningi, postępy i sesje treningowe.
+ */
 @RestController
 @RequestMapping("/api/client")
 public class ClientWorkoutController {
@@ -24,6 +29,11 @@ public class ClientWorkoutController {
     public record LogWeightRequest(Double weight) {}
     public record ClientProgressLogDto(int id, String logDate, Double weight, String notes) {}
 
+    /**
+     * Zwraca katalog dostępnych ćwiczeń.
+     *
+     * @return lista {@link ExerciseDto} (id, name, bodyPart)
+     */
     @GetMapping("/exercises")
     public ResponseEntity<List<ExerciseDto>> getExercises() {
         String sql = "SELECT id, name, body_part FROM exercises ORDER BY body_part, name";
@@ -32,6 +42,12 @@ public class ClientWorkoutController {
         return ResponseEntity.ok(exercises);
     }
 
+    /**
+     * Zwraca historię pomiarów wagi zalogowanego klienta.
+     *
+     * @param principal zalogowany klient
+     * @return lista {@link ClientProgressLogDto} (id, logDate, weight, notes)
+     */
     @GetMapping("/progress")
     public ResponseEntity<List<ClientProgressLogDto>> getMyProgressLogs(Principal principal) {
         String email = principal.getName();
@@ -43,16 +59,40 @@ public class ClientWorkoutController {
         return ResponseEntity.ok(logs);
     }
 
+    /**
+     * Zapisuje dzisiejszy pomiar wagi klienta.
+     *
+     * @param principal zalogowany klient
+     * @param req waga (weight)
+     * @return 200 po sukcesie, 400 przy błędnej walidacji
+     */
     @PostMapping("/progress")
     public ResponseEntity<?> logWeight(Principal principal, @RequestBody LogWeightRequest req) {
+        String weightError = InputValidator.validateWeight(req == null ? null : req.weight());
+        if (weightError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(weightError));
+        }
+
         String email = principal.getName();
         Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
         jdbcTemplate.update("INSERT INTO progress_logs (client_id, log_date, weight) VALUES (?, CURRENT_DATE, ?)", clientId, req.weight());
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Loguje wykonane ćwiczenie klienta.
+     *
+     * @param principal zalogowany klient
+     * @param req exerciseId, weight, sets, reps, opcjonalnie sessionId
+     * @return 200 po sukcesie, 400 przy błędnej walidacji
+     */
     @PostMapping("/workouts")
     public ResponseEntity<?> logWorkout(Principal principal, @RequestBody LogWorkoutRequest req) {
+        String weightError = InputValidator.validateWeight(req == null ? null : req.weight());
+        if (weightError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(weightError));
+        }
+
         String email = principal.getName();
         Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
         jdbcTemplate.update("INSERT INTO client_workouts (client_id, exercise_id, session_id, weight, sets, reps, workout_date) VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE)",
@@ -60,6 +100,12 @@ public class ClientWorkoutController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Zwraca historię treningów zalogowanego klienta.
+     *
+     * @param principal zalogowany klient
+     * @return lista {@link ClientWorkoutDto}
+     */
     @GetMapping("/workouts")
     public ResponseEntity<List<ClientWorkoutDto>> getMyWorkouts(Principal principal) {
         String email = principal.getName();
@@ -71,6 +117,13 @@ public class ClientWorkoutController {
         return ResponseEntity.ok(workouts);
     }
 
+    /**
+     * Usuwa wpis treningu klienta.
+     *
+     * @param principal zalogowany klient
+     * @param id identyfikator wpisu treningu
+     * @return 200 po sukcesie
+     */
     @DeleteMapping("/workouts/{id}")
     public ResponseEntity<?> deleteWorkout(Principal principal, @PathVariable int id) {
         String email = principal.getName();
@@ -79,8 +132,21 @@ public class ClientWorkoutController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Aktualizuje wpis treningu klienta (ciężar, serie, powtórzenia).
+     *
+     * @param principal zalogowany klient
+     * @param id identyfikator wpisu treningu
+     * @param req nowe wartości weight, sets, reps
+     * @return 200 po sukcesie, 400 przy błędnej walidacji
+     */
     @PutMapping("/workouts/{id}")
     public ResponseEntity<?> updateWorkout(Principal principal, @PathVariable int id, @RequestBody LogWorkoutRequest req) {
+        String weightError = InputValidator.validateWeight(req == null ? null : req.weight());
+        if (weightError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(weightError));
+        }
+
         String email = principal.getName();
         Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
         jdbcTemplate.update("UPDATE client_workouts SET weight = ?, sets = ?, reps = ? WHERE id = ? AND client_id = ?",
@@ -88,6 +154,12 @@ public class ClientWorkoutController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Zwraca sesje treningowe przypisane zalogowanemu klientowi.
+     *
+     * @param principal zalogowany klient
+     * @return lista {@link AssignedSessionDto} z ćwiczeniami i statusem rezerwacji
+     */
     @GetMapping("/sessions")
     public ResponseEntity<List<AssignedSessionDto>> getMySessions(Principal principal) {
         String email = principal.getName();
@@ -108,11 +180,26 @@ public class ClientWorkoutController {
         return ResponseEntity.ok(sessions);
     }
 
+    /**
+     * Oznacza sesję jako ukończoną i zapisuje logi serii.
+     *
+     * @param principal zalogowany klient
+     * @param sessionId identyfikator sesji
+     * @param req lista logów serii ({@link SetLogDto})
+     * @return 200 po sukcesie
+     */
     @PostMapping("/sessions/{sessionId}/complete")
     public ResponseEntity<?> completeSession(Principal principal, @PathVariable int sessionId, @RequestBody CompleteSessionRequest req) {
         String email = principal.getName();
         Integer clientId = jdbcTemplate.queryForObject("SELECT id FROM users WHERE email = ?", Integer.class, email);
-        
+
+        Integer confirmedCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reservations WHERE user_id = ? AND session_id = ? AND status = 'CONFIRMED'",
+                Integer.class, clientId, sessionId);
+        if (confirmedCount == null || confirmedCount == 0) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse("Ten trening nie jest dostępny do ukończenia."));
+        }
+
         for (SetLogDto log : req.logs()) {
             jdbcTemplate.update("INSERT INTO client_workouts (client_id, exercise_id, session_id, weight, sets, reps, workout_date) VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE)",
                     clientId, log.exerciseId(), sessionId, log.weight(), log.setNumber(), log.reps());

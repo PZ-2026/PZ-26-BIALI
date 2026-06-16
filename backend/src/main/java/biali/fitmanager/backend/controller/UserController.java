@@ -29,7 +29,11 @@ import biali.fitmanager.backend.repository.AppUserRepository;
 import biali.fitmanager.backend.repository.MembershipRepository;
 import biali.fitmanager.backend.repository.MembershipTypeRepository;
 import biali.fitmanager.backend.repository.PaymentRepository;
+import biali.fitmanager.backend.validation.InputValidator;
 
+/**
+ * CRUD użytkowników, doładowanie salda i zakup karnetu.
+ */
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -52,11 +56,22 @@ public class UserController {
         this.paymentRepository = paymentRepository;
     }
 
+    /**
+     * Zwraca wszystkich użytkowników.
+     *
+     * @return lista {@link UserResponse}
+     */
     @GetMapping
     public List<UserResponse> getUsers() {
         return appUserRepository.findAll().stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Zwraca użytkownika po ID.
+     *
+     * @param id identyfikator użytkownika
+     * @return 200 z {@link UserResponse}, 404 gdy nie znaleziono
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getUserById(@PathVariable Integer id) {
         return appUserRepository.findById(id)
@@ -65,10 +80,17 @@ public class UserController {
                         .body(new AuthErrorResponse("User not found")));
     }
 
+    /**
+     * Tworzy nowego użytkownika.
+     *
+     * @param request dane użytkownika
+     * @return 201 z {@link UserResponse}, 400/409 przy błędach
+     */
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody UserUpsertRequest request) {
-        if (!isValidForCreate(request)) {
-            return ResponseEntity.badRequest().body(new AuthErrorResponse("Invalid user payload"));
+        String validationError = InputValidator.validateUserCreate(request);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
         }
 
         if (appUserRepository.existsByEmail(request.getEmail())) {
@@ -81,10 +103,19 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(saved));
     }
 
+    /**
+     * Doładowuje saldo konta użytkownika.
+     *
+     * @param id identyfikator użytkownika
+     * @param request kwota doładowania (amount)
+     * @param authentication zalogowany użytkownik (właściciel konta lub admin)
+     * @return 200 z {@link UserResponse}, 400/401/403/404 przy błędach
+     */
     @PostMapping("/{id}/topup")
     public ResponseEntity<?> topUp(@PathVariable Integer id, @RequestBody TopUpRequest request, org.springframework.security.core.Authentication authentication) {
-        if (request == null || request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            return ResponseEntity.badRequest().body(new AuthErrorResponse("Invalid amount"));
+        String amountError = InputValidator.validateTopUpAmount(request == null ? null : request.getAmount());
+        if (amountError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(amountError));
         }
         var authEmail = authentication.getName();
         var authUserOpt = appUserRepository.findByEmail(authEmail);
@@ -108,6 +139,14 @@ public class UserController {
                         .body(new AuthErrorResponse("User not found")));
     }
 
+    /**
+     * Kupuje karnet z salda użytkownika.
+     *
+     * @param id identyfikator użytkownika
+     * @param membershipTypeId identyfikator typu karnetu
+     * @param authentication zalogowany użytkownik (właściciel konta lub admin)
+     * @return 200 z {@link Membership}, 400 przy braku środków, 401/403/404/409 przy błędach
+     */
     @PostMapping("/{id}/purchase-membership/{membershipTypeId}")
     @Transactional
     public ResponseEntity<?> purchaseMembership(@PathVariable Integer id, @PathVariable Integer membershipTypeId, org.springframework.security.core.Authentication authentication) {
@@ -167,8 +206,20 @@ public class UserController {
         return ResponseEntity.ok(saved);
     }
 
+    /**
+     * Aktualizuje dane użytkownika.
+     *
+     * @param id identyfikator użytkownika
+     * @param request pola do aktualizacji
+     * @return 200 z {@link UserResponse}, 400/404/409 przy błędach
+     */
     @PutMapping("/{id}")
     public ResponseEntity<?> updateUser(@PathVariable Integer id, @RequestBody UserUpsertRequest request) {
+        String validationError = InputValidator.validateUserUpdate(request);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
+        }
+
         return appUserRepository.findById(id)
                 .<ResponseEntity<?>>map(existing -> {
                     if (request.getEmail() != null
@@ -186,6 +237,12 @@ public class UserController {
                         .body(new AuthErrorResponse("User not found")));
     }
 
+    /**
+     * Usuwa użytkownika po ID.
+     *
+     * @param id identyfikator użytkownika
+     * @return 204 po sukcesie, 404 gdy nie znaleziono
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable Integer id) {
         if (!appUserRepository.existsById(id)) {
@@ -195,6 +252,13 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Kopiuje pola z żądania do encji użytkownika.
+     *
+     * @param user encja do uzupełnienia
+     * @param request dane z żądania
+     * @param createMode true przy tworzeniu nowego użytkownika
+     */
     private void applyUpsert(AppUser user, UserUpsertRequest request, boolean createMode) {
         if (request.getEmail() != null) {
             user.setEmail(request.getEmail().trim().toLowerCase());
@@ -227,14 +291,12 @@ public class UserController {
         }
     }
 
-    private boolean isValidForCreate(UserUpsertRequest request) {
-        return request != null
-                && request.getEmail() != null && !request.getEmail().isBlank()
-                && request.getPassword() != null && !request.getPassword().isBlank()
-                && request.getFirstName() != null && !request.getFirstName().isBlank()
-                && request.getLastName() != null && !request.getLastName().isBlank();
-    }
-
+    /**
+     * Mapuje encję użytkownika na DTO odpowiedzi.
+     *
+     * @param user encja AppUser
+     * @return {@link UserResponse}
+     */
     private UserResponse toResponse(AppUser user) {
         return new UserResponse(
                 user.getId(),
