@@ -2,6 +2,8 @@ package biali.fitmanager
 
 import android.content.Intent
 import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -123,22 +125,23 @@ class AdminHomeActivity : ComponentActivity() {
                             this@AdminHomeActivity.lifecycleScope.launch {
                                 when (val res = repo.downloadUsersReportPdf()) {
                                     is biali.fitmanager.network.ApiResult.Success -> {
-                                        val body = res.data
                                         try {
-                                            val cacheFile = java.io.File(this@AdminHomeActivity.cacheDir, "users-report.pdf")
-                                            body.byteStream().use { input ->
-                                                cacheFile.outputStream().use { output ->
-                                                    input.copyTo(output)
+                                            val cacheFile = withContext(Dispatchers.IO) {
+                                                val file = java.io.File(cacheDir, "users-report.pdf")
+                                                res.data.byteStream().use { input ->
+                                                    file.outputStream().use { output ->
+                                                        input.copyTo(output)
+                                                    }
                                                 }
+                                                file
                                             }
-
-                                            val uri = androidx.core.content.FileProvider.getUriForFile(this@AdminHomeActivity, this@AdminHomeActivity.applicationContext.packageName + ".provider", cacheFile)
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                                            intent.setDataAndType(uri, "application/pdf")
-                                            intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            this@AdminHomeActivity.startActivity(intent)
+                                            openPdfFile(this@AdminHomeActivity, cacheFile)
                                         } catch (ex: Exception) {
-                                            android.widget.Toast.makeText(this@AdminHomeActivity, "Błąd zapisu/pliku: ${ex.message}", android.widget.Toast.LENGTH_LONG).show()
+                                            Toast.makeText(
+                                                this@AdminHomeActivity,
+                                                "Błąd zapisu/pliku: ${ex.message}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
                                         }
                                     }
                                     is biali.fitmanager.network.ApiResult.Unauthorized -> {

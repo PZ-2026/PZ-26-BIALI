@@ -11,9 +11,11 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -22,7 +24,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FitManager"
-include(":app")
-include(":pdf-report-lib")
-project(":pdf-report-lib").projectDir = file("../pdf-report-lib")
+rootProject.name = "pdf-report-lib"

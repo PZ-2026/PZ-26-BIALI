@@ -42,6 +42,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":pdf-report-lib"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
