@@ -3,9 +3,7 @@ package biali.fitmanager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,9 +35,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import biali.fitmanager.network.ApiResult
+import biali.fitmanager.network.FitManagerRepository
 import biali.fitmanager.network.SessionManager
+import biali.fitmanager.pdf.ProgressReportGenerator
 import biali.fitmanager.validation.InputValidator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class LogWorkoutRequest(val exerciseId: Int, val weight: Double, val sets: Int, val reps: Int, val sessionId: Int? = null)
 data class ClientWorkoutDto(val id: Int, val clientName: String, val exerciseName: String, val weight: Double, val sets: Int, val reps: Int, val date: String, val sessionId: Int? = null)
@@ -187,21 +193,7 @@ fun ProgressScreen(
 
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val displayName = SessionManager.getToken()
-        ?.let(SessionManager::resolveDisplayNameFromToken)
-        ?: "Klient"
-
-    val pdfLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/pdf")
-    ) { uri ->
-        if (uri != null) {
-            ProgressReportPdfGenerator.write(
-                context,
-                uri,
-                ProgressReportData.fromClient(displayName, state.progressLogs, state.myWorkouts)
-            )
-        }
-    }
+    val scope = rememberCoroutineScope()
 
     var selectedExerciseName by remember { mutableStateOf<String?>(null) }
     var showWeightDialog by remember { mutableStateOf(false) }
@@ -346,12 +338,51 @@ fun ProgressScreen(
 
                         item {
                             Button(
-                                onClick = { pdfLauncher.launch("Raport_postepow.pdf") },
+                                onClick = {
+                                    scope.launch {
+                                        val repo = FitManagerRepository()
+                                        when (val res = repo.getProgressSummary()) {
+                                            is ApiResult.Success -> {
+                                                try {
+                                                    val pdfFile = withContext(Dispatchers.IO) {
+                                                        val file = java.io.File(context.cacheDir, "progress-report.pdf")
+                                                        ProgressReportGenerator.writeTo(
+                                                            file,
+                                                            ProgressReportMapper.from(
+                                                                res.data,
+                                                                state.myWorkouts,
+                                                                state.progressLogs
+                                                            )
+                                                        )
+                                                        file
+                                                    }
+                                                    openPdfFile(context, pdfFile)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Błąd podczas generowania PDF: ${e.message}",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            }
+                                            is ApiResult.Unauthorized -> {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Sesja wygasła. Zaloguj się ponownie.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                            is ApiResult.Error -> {
+                                                Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
                                 enabled = workouts.isNotEmpty() || progressLogs.isNotEmpty(),
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6B5D))
                             ) {
-                                Text("Zapisz raport postępów (PDF)", color = Color.White)
+                                Text("Generuj raport postępów", color = Color.White)
                             }
                         }
 
@@ -847,4 +878,3 @@ fun EditWorkoutDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Anuluj") } }
     )
 }
-

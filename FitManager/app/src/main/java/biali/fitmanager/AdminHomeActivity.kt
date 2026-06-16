@@ -3,6 +3,8 @@ package biali.fitmanager
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -66,7 +68,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.launch
-import androidx.core.content.FileProvider
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.ui.theme.Green80
 import biali.fitmanager.ui.theme.GymManagerTheme
@@ -142,13 +143,13 @@ class AdminHomeActivity : ComponentActivity() {
                         onMembershipTypeClear = viewModel::clearMembershipTypeForm,
                         onEditMembershipType = viewModel::fillMembershipTypeForm,
                         onDeleteMembershipType = viewModel::deleteMembershipType,
-                                                            onGenerateReport = {
-                                                                this@AdminHomeActivity.generateUsersReport()
-                                                            }
-                        ) // end AdminDashboardScreen call
-                    } // end Scaffold lambda
-                } // end GymManagerTheme
-            } // end setContent
+                        onGenerateReport = {
+                            this@AdminHomeActivity.generateUsersReport()
+                        }
+                    )
+                }
+                }
+            }
         } catch (e: Exception) {
             // If anything crashes during Compose setup, show a Toast instead of minimizing
             android.util.Log.e("AdminHomeActivity", "Error setting up admin panel", e)
@@ -157,28 +158,28 @@ class AdminHomeActivity : ComponentActivity() {
         }
     }
 
-    // Helper to download users report PDF and open it.
     private fun generateUsersReport() {
         val repo = biali.fitmanager.network.FitManagerRepository()
         this.lifecycleScope.launch {
             when (val res = repo.downloadUsersReportPdf()) {
                 is biali.fitmanager.network.ApiResult.Success -> {
-                    val body = res.data
                     try {
-                        val cacheFile = java.io.File(this@AdminHomeActivity.cacheDir, "users-report.pdf")
-                        body.byteStream().use { input ->
-                            cacheFile.outputStream().use { output ->
-                                input.copyTo(output)
+                        val cacheFile = withContext(Dispatchers.IO) {
+                            val file = java.io.File(cacheDir, "users-report.pdf")
+                            res.data.byteStream().use { input ->
+                                file.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
                             }
+                            file
                         }
-
-                        val uri = FileProvider.getUriForFile(this@AdminHomeActivity, adminHomePackageName(), cacheFile)
-                        val intent = Intent(Intent.ACTION_VIEW)
-                        intent.setDataAndType(uri, "application/pdf")
-                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                        this@AdminHomeActivity.startActivity(intent)
+                        openPdfFile(this@AdminHomeActivity, cacheFile)
                     } catch (ex: Exception) {
-                        Toast.makeText(this@AdminHomeActivity, "Błąd zapisu/pliku: ${ex.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(
+                            this@AdminHomeActivity,
+                            "Błąd zapisu/pliku: ${ex.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
                 is biali.fitmanager.network.ApiResult.Unauthorized -> {
@@ -190,9 +191,6 @@ class AdminHomeActivity : ComponentActivity() {
             }
         }
     }
-
-    // Return packageName.provider authorities string for FileProvider
-    private fun adminHomePackageName(): String = applicationContext.packageName + ".provider"
 
     private fun hasAdminRole(): Boolean {
         val role = SessionManager.getRole()
