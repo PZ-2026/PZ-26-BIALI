@@ -1,12 +1,17 @@
 package biali.fitmanager.backend.service;
 
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
-import java.time.format.DateTimeFormatter;
-import java.time.LocalDateTime;
-import java.util.List;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -19,10 +24,17 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 
+import biali.fitmanager.backend.dto.ChartDataResponse;
 import biali.fitmanager.backend.model.AppUser;
+import biali.fitmanager.backend.model.Membership;
+import biali.fitmanager.backend.model.Payment;
 import biali.fitmanager.backend.repository.AppUserRepository;
+import biali.fitmanager.backend.repository.MembershipRepository;
+import biali.fitmanager.backend.repository.PaymentRepository;
+import biali.fitmanager.backend.repository.TrainerClientRepository;
 
 /**
  * Generowanie raportów PDF dla panelu administracyjnego.
@@ -30,13 +42,28 @@ import biali.fitmanager.backend.repository.AppUserRepository;
 @Service
 public class PdfReportService {
 
+    private static final Color HEADER_BG = new Color(220, 220, 220);
+    private static final Color ALT_ROW_BG = new Color(245, 245, 245);
+    private static final float CELL_PADDING = 4f;
+    private static final int EXPIRING_SOON_DAYS = 14;
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
     private final AppUserRepository appUserRepository;
-    private final biali.fitmanager.backend.repository.TrainerClientRepository trainerClientRepository;
+    private final TrainerClientRepository trainerClientRepository;
+    private final ChartService chartService;
+    private final PaymentRepository paymentRepository;
+    private final MembershipRepository membershipRepository;
 
     public PdfReportService(AppUserRepository appUserRepository,
-                            biali.fitmanager.backend.repository.TrainerClientRepository trainerClientRepository) {
+                            TrainerClientRepository trainerClientRepository,
+                            ChartService chartService,
+                            PaymentRepository paymentRepository,
+                            MembershipRepository membershipRepository) {
         this.appUserRepository = appUserRepository;
         this.trainerClientRepository = trainerClientRepository;
+        this.chartService = chartService;
+        this.paymentRepository = paymentRepository;
+        this.membershipRepository = membershipRepository;
     }
 
     /**
@@ -47,124 +74,57 @@ public class PdfReportService {
      */
     public byte[] generateUsersReport(String generatedBy) {
         List<AppUser> users = appUserRepository.findAll();
+        List<Membership> memberships = membershipRepository.findAll();
+        ChartDataResponse chartData = chartService.getChartData();
+        Map<Integer, String> membershipLabels = buildMembershipLabels(users, memberships);
+        Map<Integer, AppUser> userById = users.stream()
+                .filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(AppUser::getId, u -> u, (a, b) -> a));
+        Set<Integer> activeMembershipUserIds = memberships.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                .map(Membership::getUserId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Integer, List<Integer>> trainerToClients = trainerClientRepository.findAll().stream()
+                .collect(Collectors.groupingBy(tc -> tc.getTrainerId(),
+                        Collectors.mapping(tc -> tc.getClientId(), Collectors.toList())));
+        Set<Integer> assignedClientIds = trainerToClients.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
+
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            Document doc = new Document(PageSize.A4.rotate(), 36, 36, 36, 36);
-            PdfWriter.getInstance(doc, baos);
+            Document doc = new Document(PageSize.A4.rotate(), 36, 36, 48, 36);
+            PdfWriter writer = PdfWriter.getInstance(doc, baos);
+            Font small = new Font(Font.HELVETICA, 9);
+            writer.setPageEvent(new PageNumberFooter(small));
             doc.open();
 
             Font titleFont = new Font(Font.HELVETICA, 16, Font.BOLD);
             Font normal = new Font(Font.HELVETICA, 10);
-            Font small = new Font(Font.HELVETICA, 9);
+            Font sectionFont = new Font(Font.HELVETICA, 12, Font.BOLD);
 
-                Paragraph title = new Paragraph("Users report", titleFont);
+            Paragraph title = new Paragraph("Users report", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             doc.add(title);
 
-                Paragraph meta = new Paragraph("Generated by: " + (generatedBy == null ? "unknown" : generatedBy) + " - " + java.time.ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME), normal);
-                meta.setSpacingAfter(8f);
-                doc.add(meta);
+            Paragraph meta = new Paragraph(
+                    "Generated by: " + (generatedBy == null ? "unknown" : generatedBy)
+                            + " - " + java.time.ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                    normal);
+            meta.setSpacingAfter(12f);
+            doc.add(meta);
 
-                // Statystyki dla administratora
-                int totalUsers = users.size();
-                long trainers = users.stream().filter(u -> u.getRole() != null && u.getRole().equalsIgnoreCase("TRAINER")).count();
-                long clients = users.stream().filter(u -> u.getRole() != null && u.getRole().equalsIgnoreCase("CLIENT")).count();
-                BigDecimal totalBalance = users.stream()
-                    .map(u -> u.getAccountBalance() == null ? BigDecimal.ZERO : u.getAccountBalance())
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            addMembershipSection(doc, chartData, sectionFont, small);
+            addActiveMembershipsSection(doc, memberships, userById, sectionFont, small);
+            addExpiringMembershipsSection(doc, memberships, userById, sectionFont, small);
+            addClientsWithoutMembershipSection(doc, users, activeMembershipUserIds, sectionFont, small);
+            addRevenueSection(doc, chartData, sectionFont, small);
+            addMembershipTypeSalesSection(doc, chartData, sectionFont, small);
+            addTrainerAssignmentsSection(doc, users, trainerToClients, sectionFont, small);
+            addClientsWithoutTrainerSection(doc, users, assignedClientIds, sectionFont, small);
+            addRecentPaymentsSection(doc, users, sectionFont, small);
+            addUsersTableSection(doc, users, membershipLabels, sectionFont, small);
 
-                Paragraph stats = new Paragraph(String.format("Total users: %d    Trainers: %d    Clients: %d    Total balance: %s",
-                    totalUsers, trainers, clients, formatBalance(totalBalance)), normal);
-                stats.setSpacingAfter(12f);
-                doc.add(stats);
-
-            PdfPTable table = new PdfPTable(new float[]{1f, 3f, 2.5f, 2.5f, 2f, 2.5f, 3f, 2f});
-            table.setWidthPercentage(100);
-
-            addHeaderCell(table, "ID");
-            addHeaderCell(table, "Email");
-            addHeaderCell(table, "First Name");
-            addHeaderCell(table, "Last Name");
-            addHeaderCell(table, "Role");
-            addHeaderCell(table, "Phone");
-            addHeaderCell(table, "Created At");
-            addHeaderCell(table, "Balance");
-
-            for (AppUser u : users) {
-                table.addCell(new PdfPCell(new Phrase(u.getId() == null ? "" : u.getId().toString(), small)));
-                table.addCell(new PdfPCell(new Phrase(u.getEmail() == null ? "" : u.getEmail(), small)));
-                table.addCell(new PdfPCell(new Phrase(u.getFirstName() == null ? "" : u.getFirstName(), small)));
-                table.addCell(new PdfPCell(new Phrase(u.getLastName() == null ? "" : u.getLastName(), small)));
-                table.addCell(new PdfPCell(new Phrase(u.getRole() == null ? "" : u.getRole(), small)));
-                table.addCell(new PdfPCell(new Phrase(u.getPhoneNumber() == null ? "" : u.getPhoneNumber(), small)));
-                table.addCell(new PdfPCell(new Phrase(formatCreatedAt(u.getCreatedAt()), small)));
-                PdfPCell balCell = new PdfPCell(new Phrase(formatBalance(u.getAccountBalance()), small));
-                balCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                table.addCell(balCell);
-            }
-
-            doc.add(table);
-
-                // Prosty wykres słupkowy: trenerzy vs klienci
-                Paragraph chartTitle = new Paragraph("Users by role (visual):", normal);
-                chartTitle.setSpacingBefore(12f);
-                chartTitle.setSpacingAfter(6f);
-                doc.add(chartTitle);
-
-                int maxVal = Math.max((int) trainers, (int) clients);
-                if (maxVal == 0) maxVal = 1;
-
-                PdfPTable chartTable = new PdfPTable(new float[]{2f, 8f, 2f});
-                chartTable.setWidthPercentage(60);
-                chartTable.getDefaultCell().setBorder(PdfPCell.NO_BORDER);
-
-                // Wiersz trenerów
-                chartTable.addCell(new Phrase("Trainers", small));
-                int maxBlocks = 30;
-                int trainersBlocks = Math.round((float) trainers / maxVal * maxBlocks);
-                String trainersBar = trainersBlocks > 0 ? "▇".repeat(trainersBlocks) : "";
-                chartTable.addCell(new Phrase(trainersBar, small));
-                chartTable.addCell(new Phrase(String.valueOf(trainers), small));
-
-                // Wiersz klientów
-                chartTable.addCell(new Phrase("Clients", small));
-                int clientsBlocks = Math.round((float) clients / maxVal * maxBlocks);
-                String clientsBar = clientsBlocks > 0 ? "▇".repeat(clientsBlocks) : "";
-                chartTable.addCell(new Phrase(clientsBar, small));
-                chartTable.addCell(new Phrase(String.valueOf(clients), small));
-
-                doc.add(chartTable);
-
-                // Przypisania trener -> klienci
-                Paragraph assignTitle = new Paragraph("Trainer assignments:", normal);
-                assignTitle.setSpacingBefore(12f);
-                assignTitle.setSpacingAfter(6f);
-                doc.add(assignTitle);
-
-                PdfPTable assignTable = new PdfPTable(new float[]{3f, 7f});
-                assignTable.setWidthPercentage(100);
-                addHeaderCell(assignTable, "Trainer");
-                addHeaderCell(assignTable, "Clients");
-
-                // Mapa trainerId -> lista clientId
-                Map<Integer, List<Integer>> mapping = trainerClientRepository.findAll().stream()
-                    .collect(Collectors.groupingBy(TrainerClient -> TrainerClient.getTrainerId(),
-                        Collectors.mapping(tc -> tc.getClientId(), Collectors.toList())));
-
-                // Lista trenerów
-                List<AppUser> trainersList = users.stream()
-                    .filter(u -> u.getRole() != null && u.getRole().equalsIgnoreCase("TRAINER"))
-                    .toList();
-
-                for (AppUser t : trainersList) {
-                assignTable.addCell(new PdfPCell(new Phrase((t.getFirstName() == null ? "" : t.getFirstName()) + " " + (t.getLastName() == null ? "" : t.getLastName()) + " <" + (t.getEmail()==null?"":t.getEmail()) + ">", small)));
-                List<Integer> cids = mapping.getOrDefault(t.getId(), List.of());
-                String clientsStr = cids.stream()
-                    .map(id -> users.stream().filter(u -> id.equals(u.getId())).findFirst().map(u -> u.getFirstName() + " " + u.getLastName() + " (" + u.getEmail() + ")").orElse("<unknown>"))
-                    .collect(Collectors.joining(", "));
-                assignTable.addCell(new PdfPCell(new Phrase(clientsStr.isBlank() ? "-" : clientsStr, small)));
-                }
-
-                doc.add(assignTable);
             doc.close();
             return baos.toByteArray();
         } catch (Exception ex) {
@@ -172,39 +132,569 @@ public class PdfReportService {
         }
     }
 
-    /**
-     * Dodaje nagłówek kolumny do tabeli PDF.
-     *
-     * @param table tabela PDF
-     * @param text tekst nagłówka
-     */
-    private void addHeaderCell(PdfPTable table, String text) {
-        Font head = new Font(Font.HELVETICA, 11, Font.BOLD);
-        PdfPCell cell = new PdfPCell(new Phrase(text, head));
-        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
-        // zostaw tło bez kolorowania, aby uniknąć zależności od klasy Color
+    private Map<Integer, String> buildMembershipLabels(List<AppUser> users, List<Membership> memberships) {
+        Map<Integer, String> labels = new HashMap<>();
+        for (AppUser user : users) {
+            if (user.getId() != null) {
+                labels.put(user.getId(), "-");
+            }
+        }
+
+        for (Membership membership : memberships) {
+            Integer userId = membership.getUserId();
+            if (userId == null) {
+                continue;
+            }
+            String typeName = membership.getMembershipType() != null
+                    ? membership.getMembershipType().getName()
+                    : "Unknown";
+            String label = membership.getStatus() + " (" + typeName + ")";
+            String existing = labels.get(userId);
+            if (existing == null || "-".equals(existing) || "ACTIVE".equalsIgnoreCase(membership.getStatus())) {
+                if ("ACTIVE".equalsIgnoreCase(membership.getStatus()) || existing == null || "-".equals(existing)) {
+                    labels.put(userId, label);
+                }
+            }
+        }
+
+        return labels;
+    }
+
+    private void addExecutiveSummary(Document doc, List<AppUser> users, ChartDataResponse chartData,
+                                     BigDecimal totalMembershipRevenue, Font normal, Font small) throws Exception {
+        addSectionTitle(doc, "Executive summary", normal);
+
+        long admins = users.stream().filter(u -> "ADMIN".equalsIgnoreCase(u.getRole())).count();
+        long trainers = users.stream().filter(u -> "TRAINER".equalsIgnoreCase(u.getRole())).count();
+        long clients = users.stream().filter(u -> "CLIENT".equalsIgnoreCase(u.getRole())).count();
+        BigDecimal totalBalance = users.stream()
+                .map(u -> u.getAccountBalance() == null ? BigDecimal.ZERO : u.getAccountBalance())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal clientBalance = users.stream()
+                .filter(u -> "CLIENT".equalsIgnoreCase(u.getRole()))
+                .map(u -> u.getAccountBalance() == null ? BigDecimal.ZERO : u.getAccountBalance())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        ChartDataResponse.UserStats userStats = chartData.getUserStats();
+        ChartDataResponse.MembershipStats membershipStats = chartData.getMembershipStats();
+
+        PdfPTable table = new PdfPTable(new float[]{1f, 1f, 1f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+
+        addSummaryCell(table, "Total users", String.valueOf(users.size()), small);
+        addSummaryCell(table, "Admins", String.valueOf(admins), small);
+        addSummaryCell(table, "Trainers", String.valueOf(trainers), small);
+        addSummaryCell(table, "Clients", String.valueOf(clients), small);
+        addSummaryCell(table, "Clients with trainer",
+                userStats == null ? "0" : String.valueOf(userStats.getClientsWithActiveTrainer()), small);
+        addSummaryCell(table, "Clients with active membership",
+                userStats == null ? "0" : String.valueOf(userStats.getClientsWithActiveMembership()), small);
+        addSummaryCell(table, "Active memberships",
+                membershipStats == null ? "0" : String.valueOf(membershipStats.getActiveMemberships()), small);
+        addSummaryCell(table, "Total membership payments (all time)", formatBalance(totalMembershipRevenue), small);
+        addSummaryCell(table, "Total account balance", formatBalance(totalBalance), small);
+        addSummaryCell(table, "Client account balance", formatBalance(clientBalance), small);
+
+        doc.add(table);
+    }
+
+    private void addMembershipSection(Document doc, ChartDataResponse chartData, Font sectionFont, Font small)
+            throws Exception {
+        ChartDataResponse.MembershipStats stats = chartData.getMembershipStats();
+        if (stats == null) {
+            return;
+        }
+
+        addSectionTitle(doc, "Membership overview", sectionFont);
+
+        PdfPTable table = new PdfPTable(new float[]{2f, 1f});
+        table.setWidthPercentage(50);
+        table.setHorizontalAlignment(Element.ALIGN_LEFT);
+        table.setSpacingAfter(14f);
+
+        addHeaderCell(table, "Status");
+        addHeaderCell(table, "Count");
+        addDataRow(table, "Active", String.valueOf(stats.getActiveMemberships()), small, false);
+        addDataRow(table, "Expired", String.valueOf(stats.getExpiredMemberships()), small, true);
+        addDataRow(table, "Cancelled", String.valueOf(stats.getCancelledMemberships()), small, false);
+        addDataRow(table, "Total catalog value (memberships)", formatBalance(stats.getTotalRevenueMemberships()), small, true);
+
+        doc.add(table);
+    }
+
+    private void addActiveMembershipsSection(Document doc, List<Membership> memberships,
+                                             Map<Integer, AppUser> userById,
+                                             Font sectionFont, Font small) throws Exception {
+        List<Membership> active = memberships.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                .sorted(Comparator.comparing(Membership::getEndDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        addSectionTitle(doc, "Active memberships (" + active.size() + ")", sectionFont);
+
+        if (active.isEmpty()) {
+            Paragraph empty = new Paragraph("No active memberships.", small);
+            empty.setSpacingAfter(14f);
+            doc.add(empty);
+            return;
+        }
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 2.5f, 2f, 2f, 1.5f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Client");
+        addHeaderCell(table, "Type");
+        addHeaderCell(table, "Start");
+        addHeaderCell(table, "End");
+        addHeaderCell(table, "Status");
+
+        boolean alt = false;
+        for (Membership membership : active) {
+            table.addCell(createDataCell(formatMembershipClient(membership, userById), small, alt));
+            table.addCell(createDataCell(formatMembershipType(membership), small, alt));
+            table.addCell(createDataCell(formatDate(membership.getStartDate()), small, alt));
+            table.addCell(createDataCell(formatDate(membership.getEndDate()), small, alt));
+            table.addCell(createDataCell(membership.getStatus() == null ? "" : membership.getStatus(), small, alt));
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addExpiringMembershipsSection(Document doc, List<Membership> memberships,
+                                               Map<Integer, AppUser> userById,
+                                               Font sectionFont, Font small) throws Exception {
+        LocalDate today = LocalDate.now();
+        LocalDate limit = today.plusDays(EXPIRING_SOON_DAYS);
+
+        List<Membership> expiring = memberships.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()))
+                .filter(m -> m.getEndDate() != null && !m.getEndDate().isBefore(today) && !m.getEndDate().isAfter(limit))
+                .sorted(Comparator.comparing(Membership::getEndDate))
+                .toList();
+
+        addSectionTitle(doc, "Memberships expiring in " + EXPIRING_SOON_DAYS + " days (" + expiring.size() + ")",
+                sectionFont);
+
+        if (expiring.isEmpty()) {
+            Paragraph empty = new Paragraph("No memberships expiring in the next " + EXPIRING_SOON_DAYS + " days.", small);
+            empty.setSpacingAfter(14f);
+            doc.add(empty);
+            return;
+        }
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 2.5f, 2f, 2f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Client");
+        addHeaderCell(table, "Type");
+        addHeaderCell(table, "End date");
+        addHeaderCell(table, "Days left");
+
+        boolean alt = false;
+        for (Membership membership : expiring) {
+            long daysLeft = java.time.temporal.ChronoUnit.DAYS.between(today, membership.getEndDate());
+            table.addCell(createDataCell(formatMembershipClient(membership, userById), small, alt));
+            table.addCell(createDataCell(formatMembershipType(membership), small, alt));
+            table.addCell(createDataCell(formatDate(membership.getEndDate()), small, alt));
+            table.addCell(createDataCell(String.valueOf(daysLeft), small, alt));
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addClientsWithoutMembershipSection(Document doc, List<AppUser> users,
+                                                    Set<Integer> activeMembershipUserIds,
+                                                    Font sectionFont, Font small) throws Exception {
+        List<AppUser> withoutMembership = users.stream()
+                .filter(u -> "CLIENT".equalsIgnoreCase(u.getRole()))
+                .filter(u -> u.getId() != null && !activeMembershipUserIds.contains(u.getId()))
+                .toList();
+
+        addSectionTitle(doc, "Clients without active membership (" + withoutMembership.size() + ")", sectionFont);
+
+        if (withoutMembership.isEmpty()) {
+            Paragraph empty = new Paragraph("All clients have an active membership.", small);
+            empty.setSpacingAfter(14f);
+            doc.add(empty);
+            return;
+        }
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 3f, 2f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Name");
+        addHeaderCell(table, "Email");
+        addHeaderCell(table, "Phone");
+
+        boolean alt = false;
+        for (AppUser client : withoutMembership) {
+            String name = (client.getFirstName() == null ? "" : client.getFirstName()) + " "
+                    + (client.getLastName() == null ? "" : client.getLastName());
+            table.addCell(createDataCell(name.trim(), small, alt));
+            table.addCell(createDataCell(client.getEmail() == null ? "" : client.getEmail(), small, alt));
+            table.addCell(createDataCell(client.getPhoneNumber() == null ? "-" : client.getPhoneNumber(), small, alt));
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addRevenueSection(Document doc, ChartDataResponse chartData, Font sectionFont, Font small)
+            throws Exception {
+        List<ChartDataResponse.DailyRevenue> trend = chartData.getRevenueTrend();
+        if (trend == null || trend.isEmpty()) {
+            return;
+        }
+
+        BigDecimal totalRevenue = trend.stream()
+                .map(ChartDataResponse.DailyRevenue::getRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        int totalPayments = trend.stream()
+                .mapToInt(ChartDataResponse.DailyRevenue::getPaymentCount)
+                .sum();
+
+        addSectionTitle(doc, "Revenue (last 30 days)", sectionFont);
+
+        PdfPTable summary = new PdfPTable(new float[]{2f, 1f});
+        summary.setWidthPercentage(50);
+        summary.setSpacingAfter(8f);
+        addHeaderCell(summary, "Metric");
+        addHeaderCell(summary, "Value");
+        addDataRow(summary, "Total revenue", formatBalance(totalRevenue), small, false);
+        addDataRow(summary, "Successful payments", String.valueOf(totalPayments), small, true);
+        doc.add(summary);
+
+        PdfPTable daily = new PdfPTable(new float[]{2f, 2f, 1f});
+        daily.setWidthPercentage(70);
+        daily.setSpacingAfter(14f);
+        addHeaderCell(daily, "Date");
+        addHeaderCell(daily, "Revenue");
+        addHeaderCell(daily, "Payments");
+
+        List<ChartDataResponse.DailyRevenue> nonZeroDays = trend.stream()
+                .filter(d -> d.getPaymentCount() > 0 || d.getRevenue().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+
+        if (nonZeroDays.isEmpty()) {
+            PdfPCell emptyCell = createDataCell("No payments in this period", small, false);
+            emptyCell.setColspan(3);
+            daily.addCell(emptyCell);
+        } else {
+            boolean alt = false;
+            for (ChartDataResponse.DailyRevenue day : nonZeroDays) {
+                daily.addCell(createDataCell(day.getDate(), small, alt));
+                PdfPCell revenueCell = createDataCell(formatBalance(day.getRevenue()), small, alt);
+                revenueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                daily.addCell(revenueCell);
+                daily.addCell(createDataCell(String.valueOf(day.getPaymentCount()), small, alt));
+                alt = !alt;
+            }
+        }
+
+        doc.add(daily);
+    }
+
+    private void addMembershipTypeSalesSection(Document doc, ChartDataResponse chartData, Font sectionFont, Font small)
+            throws Exception {
+        List<ChartDataResponse.MembershipTypeSales> sales = chartData.getMembershipTypeSales();
+        if (sales == null || sales.isEmpty()) {
+            return;
+        }
+
+        addSectionTitle(doc, "Membership type sales", sectionFont);
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 1f, 2f});
+        table.setWidthPercentage(70);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Type");
+        addHeaderCell(table, "Count");
+        addHeaderCell(table, "Total revenue");
+
+        boolean alt = false;
+        for (ChartDataResponse.MembershipTypeSales item : sales) {
+            table.addCell(createDataCell(item.getMembershipTypeName(), small, alt));
+            table.addCell(createDataCell(String.valueOf(item.getSalesCount()), small, alt));
+            PdfPCell revenueCell = createDataCell(formatBalance(item.getTotalRevenue()), small, alt);
+            revenueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            table.addCell(revenueCell);
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addTrainerAssignmentsSection(Document doc, List<AppUser> users,
+                                                Map<Integer, List<Integer>> mapping,
+                                                Font sectionFont, Font small) throws Exception {
+        addSectionTitle(doc, "Trainer assignments", sectionFont);
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 7f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Trainer");
+        addHeaderCell(table, "Clients");
+
+        List<AppUser> trainersList = users.stream()
+                .filter(u -> u.getRole() != null && u.getRole().equalsIgnoreCase("TRAINER"))
+                .toList();
+
+        boolean alt = false;
+        for (AppUser trainer : trainersList) {
+            String trainerLabel = formatUserLabel(trainer);
+            List<Integer> clientIds = mapping.getOrDefault(trainer.getId(), List.of());
+            String clientsStr = clientIds.stream()
+                    .map(id -> users.stream().filter(u -> id.equals(u.getId())).findFirst()
+                            .map(this::formatUserShort)
+                            .orElse("<unknown>"))
+                    .collect(Collectors.joining(", "));
+            addDataRow(table, trainerLabel, clientsStr.isBlank() ? "-" : clientsStr, small, alt);
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addClientsWithoutTrainerSection(Document doc, List<AppUser> users,
+                                                   Set<Integer> assignedClientIds,
+                                                   Font sectionFont, Font small) throws Exception {
+        List<AppUser> unassigned = users.stream()
+                .filter(u -> "CLIENT".equalsIgnoreCase(u.getRole()))
+                .filter(u -> u.getId() != null && !assignedClientIds.contains(u.getId()))
+                .toList();
+
+        addSectionTitle(doc, "Clients without trainer (" + unassigned.size() + ")", sectionFont);
+
+        if (unassigned.isEmpty()) {
+            Paragraph empty = new Paragraph("All clients are assigned to a trainer.", small);
+            empty.setSpacingAfter(14f);
+            doc.add(empty);
+            return;
+        }
+
+        PdfPTable table = new PdfPTable(new float[]{3f, 3f, 2f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "Name");
+        addHeaderCell(table, "Email");
+        addHeaderCell(table, "Phone");
+
+        boolean alt = false;
+        for (AppUser client : unassigned) {
+            String name = (client.getFirstName() == null ? "" : client.getFirstName()) + " "
+                    + (client.getLastName() == null ? "" : client.getLastName());
+            table.addCell(createDataCell(name.trim(), small, alt));
+            table.addCell(createDataCell(client.getEmail() == null ? "" : client.getEmail(), small, alt));
+            table.addCell(createDataCell(client.getPhoneNumber() == null ? "-" : client.getPhoneNumber(), small, alt));
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addRecentPaymentsSection(Document doc, List<AppUser> users, Font sectionFont, Font small)
+            throws Exception {
+        List<Payment> recent = paymentRepository.findAll().stream()
+                .filter(p -> "SUCCESS".equalsIgnoreCase(p.getStatus()))
+                .filter(p -> p.getPaymentDate() != null)
+                .sorted(Comparator.comparing(Payment::getPaymentDate).reversed())
+                .limit(10)
+                .toList();
+
+        addSectionTitle(doc, "Recent successful payments (last 10)", sectionFont);
+
+        if (recent.isEmpty()) {
+            Paragraph empty = new Paragraph("No successful payments recorded.", small);
+            empty.setSpacingAfter(14f);
+            doc.add(empty);
+            return;
+        }
+
+        Map<Integer, AppUser> userById = users.stream()
+                .filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(AppUser::getId, u -> u, (a, b) -> a));
+
+        PdfPTable table = new PdfPTable(new float[]{1f, 3f, 2f, 2f});
+        table.setWidthPercentage(100);
+        table.setSpacingAfter(14f);
+        addHeaderCell(table, "ID");
+        addHeaderCell(table, "User");
+        addHeaderCell(table, "Amount");
+        addHeaderCell(table, "Date");
+
+        boolean alt = false;
+        for (Payment payment : recent) {
+            AppUser user = userById.get(payment.getUserId());
+            String userLabel = user == null ? "User #" + payment.getUserId() : formatUserShort(user);
+            table.addCell(createDataCell(payment.getId() == null ? "" : payment.getId().toString(), small, alt));
+            table.addCell(createDataCell(userLabel, small, alt));
+            PdfPCell amountCell = createDataCell(formatBalance(payment.getAmount()), small, alt);
+            amountCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            table.addCell(amountCell);
+            table.addCell(createDataCell(formatCreatedAt(payment.getPaymentDate()), small, alt));
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addUsersTableSection(Document doc, List<AppUser> users,
+                                      Map<Integer, String> membershipLabels,
+                                      Font sectionFont, Font small) throws Exception {
+        addSectionTitle(doc, "All users", sectionFont);
+
+        PdfPTable table = new PdfPTable(new float[]{1f, 3f, 2f, 2f, 1.5f, 2f, 2.5f, 2f, 2f});
+        table.setWidthPercentage(100);
+
+        addHeaderCell(table, "ID");
+        addHeaderCell(table, "Email");
+        addHeaderCell(table, "First Name");
+        addHeaderCell(table, "Last Name");
+        addHeaderCell(table, "Role");
+        addHeaderCell(table, "Phone");
+        addHeaderCell(table, "Created At");
+        addHeaderCell(table, "Membership");
+        addHeaderCell(table, "Balance");
+
+        List<AppUser> sortedUsers = users.stream()
+                .sorted(Comparator.comparingInt(u -> roleSortOrder(u.getRole())))
+                .toList();
+
+        boolean alt = false;
+        for (AppUser user : sortedUsers) {
+            table.addCell(createDataCell(user.getId() == null ? "" : user.getId().toString(), small, alt));
+            table.addCell(createDataCell(user.getEmail() == null ? "" : user.getEmail(), small, alt));
+            table.addCell(createDataCell(user.getFirstName() == null ? "" : user.getFirstName(), small, alt));
+            table.addCell(createDataCell(user.getLastName() == null ? "" : user.getLastName(), small, alt));
+            table.addCell(createDataCell(user.getRole() == null ? "" : user.getRole(), small, alt));
+            table.addCell(createDataCell(user.getPhoneNumber() == null ? "" : user.getPhoneNumber(), small, alt));
+            table.addCell(createDataCell(formatCreatedAt(user.getCreatedAt()), small, alt));
+            table.addCell(createDataCell(membershipLabels.getOrDefault(user.getId(), "-"), small, alt));
+            PdfPCell balCell = createDataCell(formatBalance(user.getAccountBalance()), small, alt);
+            balCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            table.addCell(balCell);
+            alt = !alt;
+        }
+
+        doc.add(table);
+    }
+
+    private void addSectionTitle(Document doc, String text, Font font) throws Exception {
+        Paragraph section = new Paragraph(text, font);
+        section.setSpacingBefore(4f);
+        section.setSpacingAfter(8f);
+        doc.add(section);
+    }
+
+    private void addSummaryCell(PdfPTable table, String label, String value, Font font) {
+        PdfPCell cell = new PdfPCell();
+        cell.setPadding(CELL_PADDING);
+        cell.setBackgroundColor(HEADER_BG);
+        cell.addElement(new Phrase(label + ": " + value, font));
         table.addCell(cell);
     }
 
-    /**
-     * Formatuje datę utworzenia konta do wyświetlenia w PDF.
-     *
-     * @param dt data i czas
-     * @return sformatowany ciąg lub pusty gdy null
-     */
+    private void addHeaderCell(PdfPTable table, String text) {
+        Font head = new Font(Font.HELVETICA, 10, Font.BOLD);
+        PdfPCell cell = new PdfPCell(new Phrase(text, head));
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setBackgroundColor(HEADER_BG);
+        cell.setPadding(CELL_PADDING);
+        table.addCell(cell);
+    }
+
+    private void addDataRow(PdfPTable table, String col1, String col2, Font font, boolean altRow) {
+        table.addCell(createDataCell(col1, font, altRow));
+        table.addCell(createDataCell(col2, font, altRow));
+    }
+
+    private PdfPCell createDataCell(String text, Font font, boolean altRow) {
+        PdfPCell cell = new PdfPCell(new Phrase(text == null ? "" : text, font));
+        cell.setPadding(CELL_PADDING);
+        if (altRow) {
+            cell.setBackgroundColor(ALT_ROW_BG);
+        }
+        return cell;
+    }
+
+    private String formatUserLabel(AppUser user) {
+        return (user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())
+                + " <" + (user.getEmail() == null ? "" : user.getEmail()) + ">";
+    }
+
+    private String formatUserShort(AppUser user) {
+        return (user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())
+                + " (" + (user.getEmail() == null ? "" : user.getEmail()) + ")";
+    }
+
+    private int roleSortOrder(String role) {
+        if (role == null) {
+            return 99;
+        }
+        return switch (role.toUpperCase()) {
+            case "ADMIN" -> 0;
+            case "TRAINER" -> 1;
+            case "CLIENT" -> 2;
+            default -> 99;
+        };
+    }
+
+    private String formatMembershipClient(Membership membership, Map<Integer, AppUser> userById) {
+        AppUser user = userById.get(membership.getUserId());
+        if (user == null) {
+            return "User #" + membership.getUserId();
+        }
+        return formatUserShort(user);
+    }
+
+    private String formatMembershipType(Membership membership) {
+        if (membership.getMembershipType() == null || membership.getMembershipType().getName() == null) {
+            return "Unknown";
+        }
+        return membership.getMembershipType().getName();
+    }
+
+    private String formatDate(LocalDate date) {
+        if (date == null) {
+            return "";
+        }
+        return date.format(DATE_FORMAT);
+    }
+
     private String formatCreatedAt(LocalDateTime dt) {
-        if (dt == null) return "";
+        if (dt == null) {
+            return "";
+        }
         return dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
-    /**
-     * Formatuje saldo konta z jednostką PLN.
-     *
-     * @param b kwota
-     * @return sformatowane saldo (np. "0.00 PLN")
-     */
     private String formatBalance(BigDecimal b) {
-        if (b == null) return "0.00";
+        if (b == null) {
+            return "0.00 PLN";
+        }
         return b.setScale(2, RoundingMode.HALF_UP).toString() + " PLN";
+    }
+
+    private static class PageNumberFooter extends PdfPageEventHelper {
+        private final Font font;
+
+        PageNumberFooter(Font font) {
+            this.font = font;
+        }
+
+        @Override
+        public void onEndPage(PdfWriter writer, Document document) {
+            PdfPTable footer = new PdfPTable(1);
+            footer.setTotalWidth(document.right() - document.left());
+            PdfPCell cell = new PdfPCell(new Phrase("Page " + writer.getPageNumber(), font));
+            cell.setBorder(PdfPCell.NO_BORDER);
+            cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            footer.addCell(cell);
+            footer.writeSelectedRows(0, -1, document.left(), document.bottom() - 10, writer.getDirectContent());
+        }
     }
 }
