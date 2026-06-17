@@ -67,6 +67,7 @@ class HomeActivity : ComponentActivity() {
     private var trainerName by mutableStateOf<String?>(null)
     private var trainerStartDate by mutableStateOf<String?>(null)
     private var trainerEndDate by mutableStateOf<String?>(null)
+    private var trainerStatusNote by mutableStateOf<String?>(null)
     private var currentTrainerId by mutableStateOf<Int?>(null)
     private var isTrainerLoading by mutableStateOf(true)
     private var assignedSessions by mutableStateOf<List<AssignedSessionDto>>(emptyList())
@@ -118,6 +119,7 @@ class HomeActivity : ComponentActivity() {
                             trainerName = trainerName,
                             trainerStartDate = trainerStartDate,
                             trainerEndDate = trainerEndDate,
+                            trainerStatusNote = trainerStatusNote,
                             isTrainerLoading = isTrainerLoading,
                             onTrainerClick = {
                                 currentTrainerId?.let { navigateToTrainerDetails(it) }
@@ -259,11 +261,26 @@ class HomeActivity : ComponentActivity() {
                     currentTrainerId = activeTrainerId
 
                     if (activeTrainerId == null) {
-                        currentTrainerId = null
-                        trainerName = null
-                        trainerStartDate = null
-                        trainerEndDate = null
+                        val pendingTrainerName = SessionManager.getPendingTrainerName()
+                        val pendingTrainerEndDate = SessionManager.getPendingTrainerEndDate() ?: rawEndDate
+                        val daysLeft = pendingTrainerEndDate?.let(::calculateRemainingDays) ?: 0
+
+                        if (!pendingTrainerName.isNullOrBlank() && daysLeft > 0) {
+                            trainerName = pendingTrainerName
+                            trainerStartDate = pendingTrainerEndDate?.let(::calculateTrainerStartDate)
+                            trainerEndDate = pendingTrainerEndDate?.let(::formatIsoDateForDisplay)
+                            trainerStatusNote = "Zrezygnowano, pozostało $daysLeft dni do wygaśnięcia."
+                        } else {
+                            SessionManager.clearPendingTrainerCooldown()
+                            currentTrainerId = null
+                            trainerName = null
+                            trainerStartDate = null
+                            trainerEndDate = null
+                            trainerStatusNote = null
+                        }
                     } else {
+                        SessionManager.clearPendingTrainerCooldown()
+                        trainerStatusNote = null
                         trainerEndDate = rawEndDate?.let(::formatIsoDateForDisplay)
                         trainerStartDate = rawEndDate?.let(::calculateTrainerStartDate)
 
@@ -290,6 +307,7 @@ class HomeActivity : ComponentActivity() {
                     trainerName = null
                     trainerStartDate = null
                     trainerEndDate = null
+                    trainerStatusNote = null
                 }
             }
             isTrainerLoading = false
@@ -440,6 +458,19 @@ private fun calculateTrainerStartDate(rawEndDate: String): String {
     return output.format(calendar.time)
 }
 
+private fun calculateRemainingDays(isoDateString: String): Long {
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val endDate = sdf.parse(isoDateString) ?: return 0L
+        val today = java.util.Date()
+        val diff = endDate.time - today.time
+        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff)
+        maxOf(days, 0L)
+    } catch (_: Exception) {
+        0L
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Navbar(onLogout: () -> Unit, balance: Double? = null, onBalanceClick: () -> Unit = {}, userRole: String? = null) {
@@ -482,6 +513,7 @@ fun MainContent(
     trainerName: String?,
     trainerStartDate: String?,
     trainerEndDate: String?,
+    trainerStatusNote: String?,
     isTrainerLoading: Boolean,
     onTrainerClick: () -> Unit,
     onNavigateToProgress: () -> Unit,
@@ -512,6 +544,7 @@ fun MainContent(
             trainerName = trainerName,
             trainerStartDate = trainerStartDate,
             trainerEndDate = trainerEndDate,
+            trainerStatusNote = trainerStatusNote,
             isTrainerLoading = isTrainerLoading,
             onClick = onTrainerClick
         )
@@ -664,6 +697,7 @@ fun TrainerSection(
     trainerName: String?,
     trainerStartDate: String?,
     trainerEndDate: String?,
+    trainerStatusNote: String?,
     isTrainerLoading: Boolean,
     onClick: () -> Unit
 ) {
@@ -671,6 +705,8 @@ fun TrainerSection(
 
     val backgroundColor = when {
         isTrainerLoading -> Color.LightGray.copy(alpha = 0.4f)
+        // pomarańczowy w okresie wypowiedzenia
+        !trainerStatusNote.isNullOrBlank() -> Color(0xFFFFA726)
         hasTrainer -> Color(0xFF4CAF50)
         else -> Color(0xFFF44336)
     }
@@ -720,6 +756,15 @@ fun TrainerSection(
                     fontSize = 16.sp,
                     color = textColor
                 )
+                if (!trainerStatusNote.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = trainerStatusNote,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = textColor
+                    )
+                }
             } else {
                 Text(
                     text = "Brak trenera personalnego",
@@ -960,6 +1005,7 @@ fun MainContentPreview() {
             trainerName = null,
             trainerStartDate = null,
             trainerEndDate = null,
+            trainerStatusNote = null,
             isTrainerLoading = false,
             onTrainerClick = {},
             onNavigateToProgress = {},

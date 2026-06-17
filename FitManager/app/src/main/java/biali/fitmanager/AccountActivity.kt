@@ -679,13 +679,22 @@ private fun AccountBottomNav(
             )
         }
     } else {
-        AdminBottomNav(
-            currentRoute = "account",
-            onNavigateToPanel = { navigateByRole(context, role, "home") },
-            onNavigateToTrainers = { navigateByRole(context, role, "trainers") },
-            onNavigateToProgress = { navigateByRole(context, role, "home") },
-            onNavigateToAccount = onCurrentScreen
-        )
+        if (role.equals("ADMIN", ignoreCase = true)) {
+            AdminBottomNav(
+                currentRoute = "account",
+                onNavigateToPanel = { navigateByRole(context, role, "home") },
+                onNavigateToAccount = onCurrentScreen
+            )
+        } else {
+            FitBottomNav(
+                currentRoute = "account",
+                onNavigateToHome = { navigateByRole(context, role, "home") },
+                onNavigateToTrainers = { navigateByRole(context, role, "trainers") },
+                onNavigateToMemberships = { navigateByRole(context, role, "memberships") },
+                onNavigateToProgress = { navigateByRole(context, role, "progress") },
+                onNavigateToAccount = onCurrentScreen
+            )
+        }
     }
 }
 
@@ -696,7 +705,8 @@ private fun navigateByRole(context: android.content.Context, role: String?, rout
             else -> AccountActivity::class.java
         }
         role.equals("TRAINER", ignoreCase = true) -> when (route) {
-            "home", "trainers" -> TrainerUsersActivity::class.java
+            "home" -> TrainerHomeActivity::class.java
+            "trainers" -> TrainerUsersActivity::class.java
             "progress" -> TrainerProgressActivity::class.java
             "memberships" -> HomeActivity::class.java
             else -> AccountActivity::class.java

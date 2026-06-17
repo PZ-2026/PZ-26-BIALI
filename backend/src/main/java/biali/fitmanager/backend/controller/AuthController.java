@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import biali.fitmanager.backend.dto.AuthErrorResponse;
 import biali.fitmanager.backend.dto.LoginRequest;
@@ -41,7 +40,8 @@ public class AuthController {
      * Logowanie użytkownika na podstawie emaila i hasła.
      *
      * @param loginRequest dane logowania (email, password)
-     * @return 200 z {@link LoginResponse} (token JWT), 400 z {@link AuthErrorResponse}, 401 przy błędnych danych
+     * @return 200 z {@link LoginResponse} zawierającą token JWT (claimy: id + role),
+     *         400 z {@link AuthErrorResponse}, 401 przy błędnych danych
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
@@ -50,15 +50,23 @@ public class AuthController {
             return ResponseEntity.badRequest().body(new AuthErrorResponse(validationError));
         }
 
+        String email = loginRequest.getEmail().trim().toLowerCase();
+        String password = loginRequest.getPassword();
+
         try {
-            Authentication authentication = authenticationManager.authenticate(
+            authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            loginRequest.getEmail(),
-                            loginRequest.getPassword()
+                            email,
+                            password
                     )
             );
 
-            String token = jwtService.generateToken(authentication);
+            AppUser user = appUserRepository.findByEmail(email).orElse(null);
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new AuthErrorResponse("Invalid email or password"));
+            }
+            String token = jwtService.generateToken(user);
             return ResponseEntity.ok(new LoginResponse(token));
         } catch (AuthenticationException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -70,7 +78,8 @@ public class AuthController {
      * Rejestracja nowego klienta i automatyczne logowanie.
      *
      * @param request dane rejestracyjne (email, hasło, imię, nazwisko, telefon)
-     * @return 201 z {@link LoginResponse} (token JWT), 400 przy błędach walidacji, 409 gdy email już istnieje
+     * @return 201 z {@link LoginResponse} (token JWT z claimami id + role),
+     *         400 przy błędach walidacji, 409 gdy email już istnieje
      */
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
@@ -80,6 +89,7 @@ public class AuthController {
         }
 
         String email = request.getEmail().trim().toLowerCase();
+        String password = request.getPassword();
         if (appUserRepository.existsByEmail(email)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new AuthErrorResponse("Email already exists"));
         }
@@ -90,18 +100,18 @@ public class AuthController {
         user.setLastName(request.getLastName().trim());
         if (request.getPhoneNumber() != null) user.setPhoneNumber(request.getPhoneNumber().trim());
         user.setRole("CLIENT");
-        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setPasswordHash(passwordEncoder.encode(password));
 
         AppUser saved = appUserRepository.save(user);
 
         // authenticate and return token
         try {
-            Authentication authentication = authenticationManager.authenticate(
+            authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            request.getEmail(), request.getPassword()
+                            email, password
                     )
             );
-            String token = jwtService.generateToken(authentication);
+            String token = jwtService.generateToken(saved);
             return ResponseEntity.status(HttpStatus.CREATED).body(new LoginResponse(token));
         } catch (AuthenticationException ex) {
             // registration succeeded but auto-login failed - still return created

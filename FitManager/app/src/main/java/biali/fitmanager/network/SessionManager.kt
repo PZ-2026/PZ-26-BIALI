@@ -12,6 +12,9 @@ object SessionManager {
     private const val KEY_ROLE = "USER_ROLE"
     private const val KEY_BALANCE = "USER_BALANCE"
     private const val KEY_BALANCE_OWNER_ID = "USER_BALANCE_OWNER_ID"
+    private const val KEY_PENDING_TRAINER_NAME = "PENDING_TRAINER_NAME"
+    private const val KEY_PENDING_TRAINER_ID = "PENDING_TRAINER_ID"
+    private const val KEY_PENDING_TRAINER_END_DATE = "PENDING_TRAINER_END_DATE"
 
     @Volatile
     private var appContext: Context? = null
@@ -30,6 +33,9 @@ object SessionManager {
             // Prevent showing previous user's cached balance before fresh /api/me arrives.
             remove(KEY_BALANCE)
             remove(KEY_BALANCE_OWNER_ID)
+            remove(KEY_PENDING_TRAINER_NAME)
+            remove(KEY_PENDING_TRAINER_ID)
+            remove(KEY_PENDING_TRAINER_END_DATE)
             putString(KEY_TOKEN, token)
             putString(KEY_ROLE, resolvedRole)
         }
@@ -45,6 +51,9 @@ object SessionManager {
             remove(KEY_ROLE)
             remove(KEY_BALANCE)
             remove(KEY_BALANCE_OWNER_ID)
+            remove(KEY_PENDING_TRAINER_NAME)
+            remove(KEY_PENDING_TRAINER_ID)
+            remove(KEY_PENDING_TRAINER_END_DATE)
         }
     }
 
@@ -78,6 +87,28 @@ object SessionManager {
     fun changeBalanceBy(delta: Double) {
         val new = getBalance() + delta
         saveBalance(new)
+    }
+
+    fun savePendingTrainerCooldown(trainerId: Int, trainerName: String, trainerEndDateIso: String) {
+        prefs()?.edit {
+            putString(KEY_PENDING_TRAINER_ID, trainerId.toString())
+            putString(KEY_PENDING_TRAINER_NAME, trainerName)
+            putString(KEY_PENDING_TRAINER_END_DATE, trainerEndDateIso)
+        }
+    }
+
+    fun getPendingTrainerId(): Int? = prefs()?.getString(KEY_PENDING_TRAINER_ID, null)?.toIntOrNull()
+
+    fun getPendingTrainerName(): String? = prefs()?.getString(KEY_PENDING_TRAINER_NAME, null)
+
+    fun getPendingTrainerEndDate(): String? = prefs()?.getString(KEY_PENDING_TRAINER_END_DATE, null)
+
+    fun clearPendingTrainerCooldown() {
+        prefs()?.edit {
+            remove(KEY_PENDING_TRAINER_ID)
+            remove(KEY_PENDING_TRAINER_NAME)
+            remove(KEY_PENDING_TRAINER_END_DATE)
+        }
     }
 
     fun isLoggedIn(): Boolean = !getToken().isNullOrBlank()

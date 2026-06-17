@@ -26,7 +26,7 @@ android {
 
         // Emulator → 10.0.2.2 to localhost komputera. Telefon fizyczny → IP komputera w WiFi (podmień przy innej sieci).
         buildConfigField("String", "API_BASE_URL_EMULATOR", "\"http://10.0.2.2:8080/\"")
-        buildConfigField("String", "API_BASE_URL_DEVICE", "\"http://192.168.100.31:8080/\"")
+        buildConfigField("String", "API_BASE_URL_DEVICE", "\"http://192.168.0.101:8080/\"")
     }
 
     buildTypes {

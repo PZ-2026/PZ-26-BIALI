@@ -200,7 +200,14 @@ class TrainerProgressActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = { ProgressTopBar(onLogout = ::logout) },
-                    bottomBar = { ProgressBottomNav(onNavigateToHome = ::navigateToHome, onNavigateToClients = ::navigateToClients, onNavigateToAccount = ::navigateToAccount) }
+                    bottomBar = {
+                        ProgressBottomNav(
+                            onNavigateToHome = ::navigateToHome,
+                            onNavigateToClients = ::navigateToClients,
+                            onNavigateToProgress = { },
+                            onNavigateToAccount = ::navigateToAccount
+                        )
+                    }
                 ) { innerPadding ->
                     ProgressContent(
                         modifier = Modifier.padding(innerPadding),
@@ -981,19 +988,59 @@ fun TimelineSessionCard(
 // --- STOPKI I DIALOGI (Uzupełnienie brakujących komponentów dla poprawnej kompilacji pliku) ---
 
 @Composable
-fun ProgressBottomNav(onNavigateToHome: () -> Unit, onNavigateToClients: () -> Unit, onNavigateToAccount: () -> Unit) {
-    NavigationBar {
+fun ProgressBottomNav(
+    onNavigateToHome: () -> Unit,
+    onNavigateToClients: () -> Unit,
+    onNavigateToProgress: () -> Unit,
+    onNavigateToAccount: () -> Unit
+) {
+    NavigationBar(
+        containerColor = Color.White,
+        tonalElevation = 8.dp
+    ) {
         NavigationBarItem(
-            selected = false, onClick = onNavigateToHome,
-            icon = { Icon(Icons.Filled.Home, contentDescription = "Home") }, label = { Text("Główna") }
+            selected = false,
+            onClick = onNavigateToHome,
+            icon = { Icon(Icons.Filled.Home, contentDescription = "Panel") },
+            label = { Text("Panel") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
         )
         NavigationBarItem(
-            selected = true, onClick = onNavigateToClients,
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Klienci") }, label = { Text("Postępy") }
+            selected = false,
+            onClick = onNavigateToClients,
+            icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") },
+            label = { Text("Podopieczni") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
         )
         NavigationBarItem(
-            selected = false, onClick = onNavigateToAccount,
-            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") }, label = { Text("Konto") }
+            selected = true,
+            onClick = onNavigateToProgress,
+            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") },
+            label = { Text("Postęp") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
+        )
+        NavigationBarItem(
+            selected = false,
+            onClick = onNavigateToAccount,
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
+            label = { Text("Konto") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Green80,
+                selectedTextColor = Green80,
+                indicatorColor = LightGreen80
+            )
         )
     }
 }

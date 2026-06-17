@@ -5,6 +5,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -27,40 +28,39 @@ public class JwtService {
 
     private final Key signingKey;
     private final long expirationTime;
-    private final AppUserRepository appUserRepository;
 
-    public JwtService(AppUserRepository appUserRepository,
-                      @Value("${app.jwt.secret}") String jwtSecret,
+    @Autowired
+    public JwtService(@Value("${app.jwt.secret}") String jwtSecret,
                       @Value("${app.jwt.expiration-ms:86400000}") long expirationTime) {
-        this.appUserRepository = appUserRepository;
         this.signingKey = createSigningKey(jwtSecret);
         this.expirationTime = expirationTime;
     }
 
     /**
-     * Generuje token JWT dla zalogowanego użytkownika.
-     *
-     * @param authentication dane uwierzytelnienia Spring Security
-     * @return podpisany token JWT z emailem, rolami i imieniem
+     * Konstruktor kompatybilnościowy dla starszych testów jednostkowych.
+     * Repozytorium nie jest już potrzebne do budowy tokena.
      */
-    public String generateToken(Authentication authentication) {
-        String email = authentication.getName();
-        
-        String roles = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
+    public JwtService(AppUserRepository ignoredRepository, String jwtSecret, long expirationTime) {
+        this(jwtSecret, expirationTime);
+    }
 
-        AppUser user = appUserRepository.findByEmail(email).orElse(null);
-        String firstName = user != null ? user.getFirstName() : null;
-        String lastName = user != null ? user.getLastName() : null;
-        String fullName = user != null ? (safe(firstName) + " " + safe(lastName)).trim() : null;
+    /**
+     * Generuje minimalny token JWT używany po poprawnym logowaniu.
+     *
+     * Payload zawiera wyłącznie dwa biznesowe claime:
+     * - {@code id}: identyfikator użytkownika z bazy
+     * - {@code role}: rola użytkownika (np. CLIENT, TRAINER, ADMIN)
+     *
+     * Oprócz tego token ma standardowe pola techniczne:
+     * - {@code iat} (issued at)
+     * - {@code exp} (expiration)
+     */
+    public String generateToken(AppUser user) {
+        String role = normalizeRole(user.getRole());
 
         return Jwts.builder()
-                .setSubject(email)
-                .claim("roles", roles)
-            .claim("firstName", firstName)
-            .claim("lastName", lastName)
-            .claim("name", fullName)
+                .claim("id", user.getId())
+                .claim("role", role)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationTime))
                 .signWith(signingKey)
@@ -68,39 +68,89 @@ public class JwtService {
     }
 
     /**
-     * Zwraca pusty ciąg zamiast null.
-     *
-     * @param value tekst do zabezpieczenia
-     * @return wartość lub pusty ciąg
+     * Metoda kompatybilnościowa dla starszego kodu testowego.
+     * Jeżeli principal jest typu {@link AppUser}, token nadal zawiera id/role z encji.
+     * W przeciwnym razie tworzy token z technicznym id=0 i rolą wynikającą z authorities.
      */
-        private String safe(String value) {
-        return value == null ? "" : value;
+    public String generateToken(Authentication authentication) {
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof AppUser) {
+            return generateToken((AppUser) principal);
         }
 
+        String roleFromAuthorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .map(this::normalizeRole)
+                .filter(r -> !r.isBlank())
+                .collect(Collectors.joining(","));
+        String role = roleFromAuthorities.contains(",")
+                ? roleFromAuthorities.substring(0, roleFromAuthorities.indexOf(','))
+                : roleFromAuthorities;
+
+        return Jwts.builder()
+                .claim("id", 0)
+                .claim("role", role)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expirationTime))
+                .signWith(signingKey)
+                .compact();
+    }
+
     /**
-     * Wyciąga email (subject) z tokenu JWT.
-     *
-     * @param token token JWT
-     * @return adres email użytkownika
+     * Odczytuje id użytkownika z tokenu JWT.
+     */
+    public Integer extractUserId(String token) {
+        Claims claims = extractAllClaims(token);
+        Object idClaim = claims.get("id");
+        if (idClaim == null) {
+            return null;
+        }
+        if (idClaim instanceof Integer) {
+            return (Integer) idClaim;
+        }
+        if (idClaim instanceof Number) {
+            return ((Number) idClaim).intValue();
+        }
+        try {
+            return Integer.parseInt(idClaim.toString());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    /**
+     * Odczytuje rolę użytkownika z tokenu JWT.
+     */
+    public String extractRole(String token) {
+        Object roleClaim = extractAllClaims(token).get("role");
+        return roleClaim == null ? null : normalizeRole(roleClaim.toString());
+    }
+
+    /**
+     * Metoda kompatybilnościowa (stary kontrakt oparty o email w subject).
+     * W nowym formacie tokenu subject nie jest ustawiany, więc zwraca null.
      */
     public String extractEmail(String token) {
         return extractAllClaims(token).getSubject();
     }
 
     /**
-     * Sprawdza, czy token JWT jest ważny dla danego użytkownika.
-     *
-     * @param token token JWT
-     * @param userDetails dane użytkownika do porównania
-     * @return true gdy token poprawny i nie wygasł
+     * Sprawdza integralność podpisu i datę wygaśnięcia tokenu.
      */
-    public boolean isTokenValid(String token, UserDetails userDetails) {
+    public boolean isTokenValid(String token) {
         try {
-            String email = extractEmail(token);
-            return email.equals(userDetails.getUsername()) && !isTokenExpired(token);
+            return !isTokenExpired(token);
         } catch (JwtException | IllegalArgumentException ex) {
             return false;
         }
+    }
+
+    /**
+     * Metoda kompatybilnościowa ze starszym podpisem.
+     * Obecnie walidacja nie porównuje username, bo token nie zawiera emaila.
+     */
+    public boolean isTokenValid(String token, UserDetails ignoredUserDetails) {
+        return isTokenValid(token);
     }
 
     private boolean isTokenExpired(String token) {
@@ -124,5 +174,12 @@ public class JwtService {
             byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
             return Keys.hmacShaKeyFor(keyBytes);
         }
+    }
+
+    private String normalizeRole(String role) {
+        if (role == null) {
+            return "";
+        }
+        return role.replace("ROLE_", "").toUpperCase();
     }
 }

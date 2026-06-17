@@ -10,7 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -126,6 +128,7 @@ class TrainersActivity : ComponentActivity() {
                             },
                             onSaveWorkoutResults = { sId, results -> viewModel.saveWorkoutResults(sId, results) },
                             currentTrainerId = state.currentTrainerId,
+                            pendingTrainerId = state.pendingTrainerId,
                             currentTrainerEndDate = state.currentTrainerEndDate,
                             currentTrainerSessions = state.currentTrainerSessions
                         )
@@ -136,7 +139,7 @@ class TrainersActivity : ComponentActivity() {
                             isLoading = state.isLoading,
                             error = state.error,
                             onTrainerClick = { trainer ->
-                                if (trainer.id == state.currentTrainerId) {
+                                if (trainer.id == state.currentTrainerId || trainer.id == state.pendingTrainerId) {
                                     viewModel.selectTrainer(trainer.id)
                                 } else {
                                     selectedTrainerForPurchase = trainer
@@ -145,7 +148,9 @@ class TrainersActivity : ComponentActivity() {
                             onRefresh = { viewModel.fetchTrainers() },
                             currentTrainerId = state.currentTrainerId,
                             currentTrainer = state.currentTrainer,
-                            currentTrainerEndDate = state.currentTrainerEndDate
+                            currentTrainerEndDate = state.currentTrainerEndDate,
+                            pendingTrainerId = state.pendingTrainerId,
+                            pendingTrainerEndDate = state.pendingTrainerEndDate
                         )
                     }
 
@@ -199,15 +204,27 @@ class TrainersActivity : ComponentActivity() {
                                     }
                                     selectedTrainerForPurchase = null
                                 } else {
-                                    val balance = SessionManager.getBalance()
-                                    if (balance < TRAINER_RENTAL_PRICE) {
+                                    val pendingEndDate = state.pendingTrainerEndDate
+                                    val pendingTrainerName = state.pendingTrainerName
+                                    val remainingDays = pendingEndDate?.let(::calculateRemainingDays) ?: 0
+                                    if (!pendingTrainerName.isNullOrBlank() && remainingDays > 0) {
                                         coroutineScope.launch {
-                                            snackbarHostState.showSnackbar("Za mało środków")
+                                            snackbarHostState.showSnackbar(
+                                                "Zostało Ci $remainingDays dni współpracy z $pendingTrainerName, musisz poczekać aż minie."
+                                            )
                                         }
-                                    } else {
-                                        // trigger purchase; navigation will happen when viewModel updates actionSuccess
-                                        viewModel.pickTrainer(trainer.id)
                                         selectedTrainerForPurchase = null
+                                    } else {
+                                        val balance = SessionManager.getBalance()
+                                        if (balance < TRAINER_RENTAL_PRICE) {
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("Za mało środków")
+                                            }
+                                        } else {
+                                            // trigger purchase; navigation will happen when viewModel updates actionSuccess
+                                            viewModel.pickTrainer(trainer.id)
+                                            selectedTrainerForPurchase = null
+                                        }
                                     }
                                 }
                             }
@@ -258,7 +275,9 @@ fun TrainersListContent(
     onRefresh: () -> Unit,
     currentTrainerId: Int?,
     currentTrainer: UserResponse?,
-    currentTrainerEndDate: String?
+    currentTrainerEndDate: String?,
+    pendingTrainerId: Int?,
+    pendingTrainerEndDate: String?
 ) {
     val formattedEndDate = currentTrainerEndDate?.let { formatDisplayDate(it) }
 
@@ -319,10 +338,21 @@ fun TrainersListContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(trainers) { trainer ->
+                    val isPending = pendingTrainerId != null && trainer.id == pendingTrainerId
+                    val pendingDaysLeft = if (isPending) pendingTrainerEndDate?.let(::calculateRemainingDays) else null
+                    val pendingNote = if (isPending && (pendingDaysLeft ?: 0) > 0) {
+                        "Zrezygnowano (pozostało ${pendingDaysLeft} dni)"
+                    } else if (isPending) {
+                        "Zrezygnowano"
+                    } else {
+                        null
+                    }
                     TrainerCard(
                         trainer = trainer,
                         onClick = { onTrainerClick(trainer) },
-                        isSelected = trainer.id == currentTrainerId
+                        isSelected = trainer.id == currentTrainerId,
+                        isPendingTrainer = isPending,
+                        pendingNote = pendingNote
                     )
                 }
             }
@@ -331,7 +361,13 @@ fun TrainersListContent(
 }
 
 @Composable
-fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean = false) {
+fun TrainerCard(
+    trainer: UserResponse,
+    onClick: () -> Unit,
+    isSelected: Boolean = false,
+    isPendingTrainer: Boolean = false,
+    pendingNote: String? = null
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -339,8 +375,16 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0xFFEAF8F1) else Color.White,
-            contentColor = if (isSelected) Color.White else Color.Black
+            containerColor = when {
+                isPendingTrainer -> Color(0xFFFFA726)
+                isSelected -> Color(0xFFEAF8F1)
+                else -> Color.White
+            },
+            contentColor = when {
+                isPendingTrainer -> Color.White
+                isSelected -> Color.White
+                else -> Color.Black
+            }
         )
     ) {
         Row(
@@ -352,20 +396,43 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
                     text = "${trainer.firstName} ${trainer.lastName}",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Green80
+                    color = if (isPendingTrainer) Color.White else Green80
                 )
-                Text(text = trainer.email, fontSize = 14.sp, color = Color(0xFF546E7A))
+                Text(
+                    text = trainer.email,
+                    fontSize = 14.sp,
+                    color = if (isPendingTrainer) Color.White else Color(0xFF546E7A)
+                )
                 trainer.phoneNumber?.takeIf { it.isNotBlank() }?.let {
-                    Text(text = "Telefon: $it", fontSize = 13.sp, color = Color(0xFF607D8B))
+                    Text(
+                        text = "Telefon: $it",
+                        fontSize = 13.sp,
+                        color = if (isPendingTrainer) Color.White else Color(0xFF607D8B)
+                    )
                 }
                 Text(
                     text = "Cena wynajmu: ${String.format(java.util.Locale.getDefault(), "%.2f", TRAINER_RENTAL_PRICE)} PLN / $TRAINER_RENTAL_DURATION_DAYS dni",
                     fontSize = 13.sp,
-                    color = Color(0xFF607D8B)
+                    color = if (isPendingTrainer) Color.White else Color(0xFF607D8B)
                 )
+
+                if (!pendingNote.isNullOrBlank()) {
+                    Text(
+                        text = pendingNote,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                }
             }
             Card(
-                colors = CardDefaults.cardColors(containerColor = if (isSelected) Green80 else Color(0xFFEAF3FF)),
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        isPendingTrainer -> Color(0xFFEF6C00)
+                        isSelected -> Green80
+                        else -> Color(0xFFEAF3FF)
+                    }
+                ),
                 shape = RoundedCornerShape(999.dp)
             ) {
                 Text(
@@ -373,7 +440,7 @@ fun TrainerCard(trainer: UserResponse, onClick: () -> Unit, isSelected: Boolean 
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSelected) Color.White else Color(0xFF1E88E5)
+                    color = if (isSelected || isPendingTrainer) Color.White else Color(0xFF1E88E5)
                 )
             }
         }
@@ -391,12 +458,16 @@ fun TrainerDetailsContent(
     onResignTrainer: (Int, String?) -> Unit,
     onSaveWorkoutResults: (Int, List<WorkoutResultDraft>) -> Unit,
     currentTrainerId: Int?,
+    pendingTrainerId: Int?,
     currentTrainerEndDate: String?,
     currentTrainerSessions: List<AssignedSessionDto>
 ) {
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -467,8 +538,9 @@ fun TrainerDetailsContent(
         }
 
         val isCurrentTrainer = trainer.id == currentTrainerId
+        val isPendingTrainer = trainer.id == pendingTrainerId
 
-        if (isCurrentTrainer) {
+        if (isCurrentTrainer || isPendingTrainer) {
             TrainerWorkoutPlanSection(currentTrainerSessions, onSaveWorkoutResults)
         }
 
@@ -485,12 +557,21 @@ fun TrainerDetailsContent(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isCurrentTrainer) Color.Red else Green80
+                    containerColor = when {
+                        isCurrentTrainer -> Color.Red
+                        isPendingTrainer -> Color(0xFFEF6C00)
+                        else -> Green80
+                    }
                 ),
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(14.dp),
+                enabled = !isPendingTrainer
             ) {
                 Text(
-                    text = if (isCurrentTrainer) "Zrezygnuj z trenera" else "Wybierz tego trenera",
+                    text = when {
+                        isCurrentTrainer -> "Zrezygnuj z trenera"
+                        isPendingTrainer -> "Wypowiedzenie aktywne"
+                        else -> "Wybierz tego trenera"
+                    },
                     color = Color.White
                 )
             }

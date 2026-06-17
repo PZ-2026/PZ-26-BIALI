@@ -14,6 +14,9 @@ import kotlinx.coroutines.launch
 import biali.fitmanager.network.SessionManager
 import biali.fitmanager.network.CompleteSessionRequest
 import biali.fitmanager.network.SetLogDto
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 data class WorkoutResultDraft(
     val exerciseId: Int,
@@ -34,7 +37,10 @@ data class TrainersUiState(
     val currentTrainerId: Int? = null,
     val currentTrainer: UserResponse? = null,
     val currentTrainerEndDate: String? = null,
-    val currentTrainerSessions: List<AssignedSessionDto> = emptyList()
+    val currentTrainerSessions: List<AssignedSessionDto> = emptyList(),
+    val pendingTrainerId: Int? = null,
+    val pendingTrainerName: String? = null,
+    val pendingTrainerEndDate: String? = null
 )
 
 class TrainersViewModel : ViewModel() {
@@ -54,6 +60,7 @@ class TrainersViewModel : ViewModel() {
                             val trainerId = meResult.data.trainerId
                             val trainerEnd = meResult.data.trainerEndDate
                             if (trainerId != null) {
+                                SessionManager.clearPendingTrainerCooldown()
                                 // Fetch current trainer details
                                 when (val trainerResult = repository.getTrainerById(trainerId)) {
                                     is ApiResult.Success -> {
@@ -66,6 +73,9 @@ class TrainersViewModel : ViewModel() {
                                                         currentTrainer = trainerResult.data,
                                                         currentTrainerEndDate = trainerEnd,
                                                         currentTrainerSessions = sessionsResult.data,
+                                                        pendingTrainerId = null,
+                                                        pendingTrainerName = null,
+                                                        pendingTrainerEndDate = null,
                                                         isLoading = false
                                                     )
                                                 }
@@ -78,6 +88,9 @@ class TrainersViewModel : ViewModel() {
                                                         currentTrainer = trainerResult.data,
                                                         currentTrainerEndDate = trainerEnd,
                                                         currentTrainerSessions = emptyList(),
+                                                        pendingTrainerId = null,
+                                                        pendingTrainerName = null,
+                                                        pendingTrainerEndDate = null,
                                                         error = "Nie udało się pobrać planu treningowego",
                                                         isLoading = false
                                                     )
@@ -96,7 +109,45 @@ class TrainersViewModel : ViewModel() {
                                     }
                                 }
                             } else {
-                                _state.update { it.copy(trainers = result.data, currentTrainerId = null, currentTrainer = null, currentTrainerEndDate = null, currentTrainerSessions = emptyList(), isLoading = false) }
+                                val pendingId = SessionManager.getPendingTrainerId()
+                                val pendingName = SessionManager.getPendingTrainerName()
+                                val pendingEndDate = SessionManager.getPendingTrainerEndDate()
+                                val pendingDaysLeft = pendingEndDate?.let(::calculateRemainingDays) ?: 0L
+
+                                if (pendingId != null && !pendingName.isNullOrBlank() && !pendingEndDate.isNullOrBlank() && pendingDaysLeft > 0) {
+                                    val pendingSessions = when (val sessionsResult = repository.getMyAssignedSessions()) {
+                                        is ApiResult.Success -> sessionsResult.data
+                                        else -> emptyList()
+                                    }
+                                    _state.update {
+                                        it.copy(
+                                            trainers = result.data,
+                                            currentTrainerId = null,
+                                            currentTrainer = null,
+                                            currentTrainerEndDate = null,
+                                            currentTrainerSessions = pendingSessions,
+                                            pendingTrainerId = pendingId,
+                                            pendingTrainerName = pendingName,
+                                            pendingTrainerEndDate = pendingEndDate,
+                                            isLoading = false
+                                        )
+                                    }
+                                } else {
+                                    SessionManager.clearPendingTrainerCooldown()
+                                    _state.update {
+                                        it.copy(
+                                            trainers = result.data,
+                                            currentTrainerId = null,
+                                            currentTrainer = null,
+                                            currentTrainerEndDate = null,
+                                            currentTrainerSessions = emptyList(),
+                                            pendingTrainerId = null,
+                                            pendingTrainerName = null,
+                                            pendingTrainerEndDate = null,
+                                            isLoading = false
+                                        )
+                                    }
+                                }
                             }
                         }
                         is ApiResult.Error -> {
@@ -174,9 +225,15 @@ class TrainersViewModel : ViewModel() {
     fun resignTrainer(trainerId: Int) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, actionSuccess = null) }
+            val currentState = _state.value
+            val resignedTrainerName = currentState.currentTrainer?.let { "${it.firstName} ${it.lastName}".trim() }
+            val resignedTrainerEndDate = currentState.currentTrainerEndDate
 
             when (val result = repository.resignTrainer(trainerId)) {
                 is ApiResult.Success -> {
+                    if (!resignedTrainerName.isNullOrBlank() && !resignedTrainerEndDate.isNullOrBlank()) {
+                        SessionManager.savePendingTrainerCooldown(trainerId, resignedTrainerName, resignedTrainerEndDate)
+                    }
                     _state.update { it.copy(actionSuccess = "Pomyślnie zrezygnowano z trenera!", isLoading = false) }
                     // refresh to clear trainer info
                     fetchTrainers()
@@ -216,5 +273,18 @@ class TrainersViewModel : ViewModel() {
 
     fun clearActionSuccess() {
         _state.update { it.copy(actionSuccess = null) }
+    }
+
+    private fun calculateRemainingDays(isoDateString: String): Long {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val endDate = sdf.parse(isoDateString) ?: return 0L
+            val today = java.util.Date()
+            val diff = endDate.time - today.time
+            val days = TimeUnit.MILLISECONDS.toDays(diff)
+            maxOf(days, 0L)
+        } catch (_: Exception) {
+            0L
+        }
     }
 }

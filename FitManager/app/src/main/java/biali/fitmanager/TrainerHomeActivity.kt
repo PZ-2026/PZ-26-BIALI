@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
@@ -487,7 +488,7 @@ private fun TrainerHomeBottomNav(
             selected = false,
             onClick = onNavigateToAccount,
             label = { Text("Konto") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Konto") },
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = "Konto") },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = Green80,
                 selectedTextColor = Green80,

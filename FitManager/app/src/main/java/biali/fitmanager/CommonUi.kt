@@ -88,8 +88,6 @@ fun FitBottomNav(
 fun AdminBottomNav(
     currentRoute: String,
     onNavigateToPanel: () -> Unit,
-    onNavigateToTrainers: () -> Unit,
-    onNavigateToProgress: () -> Unit,
     onNavigateToAccount: () -> Unit
 ) {
     NavigationBar(
@@ -106,18 +104,6 @@ fun AdminBottomNav(
                 selectedTextColor = Green80,
                 indicatorColor = LightGreen80
             )
-        )
-        NavigationBarItem(
-            selected = currentRoute == "trainers",
-            onClick = onNavigateToTrainers,
-            label = { Text("Podopieczni") },
-            icon = { Icon(Icons.Filled.Person, contentDescription = "Podopieczni") }
-        )
-        NavigationBarItem(
-            selected = currentRoute == "progress",
-            onClick = onNavigateToProgress,
-            label = { Text("Postęp") },
-            icon = { Icon(Icons.Filled.Edit, contentDescription = "Postęp") }
         )
         NavigationBarItem(
             selected = currentRoute == "account",

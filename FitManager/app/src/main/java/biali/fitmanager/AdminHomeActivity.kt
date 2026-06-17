@@ -116,8 +116,6 @@ class AdminHomeActivity : ComponentActivity() {
                         AdminBottomNav(
                             currentRoute = "panel",
                             onNavigateToPanel = { },
-                            onNavigateToTrainers = { },
-                            onNavigateToProgress = { },
                             onNavigateToAccount = ::navigateToAccount
                         )
                     }
